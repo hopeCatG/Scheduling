@@ -1,0 +1,1 @@
+<view class="bg-white bg-height"><u-button vue-id="8dd740cc-1" type="primary" text="确定" bind:__l="__l"></u-button><view class="text-red">red</view></view>

@@ -1,6 +1,9 @@
 <template>
-	<view class="content">
+	<view class="bg-white bg-height">
 		<u-button type="primary" text="确定"></u-button>
+		<view class="text-red">
+			red
+		</view>
 	</view>
 </template>
 
@@ -12,9 +15,26 @@
 			}
 		},
 		onLoad() {
-
+			uni.getSystemInfo({
+				success: function(res) {
+					// 状态栏高度
+					let statusBarHeight = res.statusBarHeight;
+					console.log('状态栏高度：', statusBarHeight);
+				}
+			});
 		},
 		methods: {
+			getData() {
+				var result = 0;
+				uni.getSystemInfo({
+					success: function(res) {
+						console.log(res.windowHeight); // print 610
+						result = uni.upx2px(res.windowHeight) + 200 // 这里加200或者加100为了看测试效果
+						// 不加200默认 return 292
+					}
+				});
+				return result;
+			}
 
 		}
 	}

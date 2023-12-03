@@ -1,0 +1,43 @@
+@charset "UTF-8";
+.bg-height {
+  height: 100vh;
+}
+.gradient-background {
+  /* background: linear-gradient(to bottom, #DBEAFE 30%, #F9FAFC 70%); */
+  /* 添加其他样式属性，例如宽度、高度等，以适应您的需求 */
+}
+.boxTop {
+  width: 100%;
+  height: 500rpx;
+  background-color: #3AC3A4;
+  border-bottom-left-radius: 10%;
+  border-bottom-right-radius: 10%;
+  position: relative;
+  overflow: hidden;
+}
+.boxTop .children {
+  width: 500rpx;
+  height: 500rpx;
+  border-radius: 50%;
+  background-color: #5FCCB5;
+  position: absolute;
+  top: -30px;
+  left: -60px;
+}
+.Approval button {
+  width: 100rpx !important;
+}
+.Approval .tabs {
+  width: 80%;
+  border: 1px solid #3AC3A4;
+  overflow: hidden;
+}
+.Approval .tabs .center {
+  border-left: 1px solid #3AC3A4;
+  border-right: 1px solid #3AC3A4;
+}
+.Approval .tabs .active {
+  background-color: #3AC3A4;
+  color: white;
+}
+

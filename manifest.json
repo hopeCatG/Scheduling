@@ -1,6 +1,6 @@
 {
     "name" : "Scheduling",
-    "appid" : "__UNI__BD96585",
+    "appid" : "__UNI__4CECDAA",
     "description" : "",
     "versionName" : "1.0.0",
     "versionCode" : "100",
@@ -50,7 +50,7 @@
     "quickapp" : {},
     /* 小程序特有相关 */
     "mp-weixin" : {
-        "appid" : "",
+        "appid" : "wx19e3d2c9833398a0",
         "setting" : {
             "urlCheck" : false
         },
