@@ -1,7 +1,7 @@
 {
 	"easycom": {
-			"^u-(.*)": "@/uni_modules/uview-ui/components/u-$1/u-$1.vue"
-		},
+		"^u-(.*)": "@/uni_modules/uview-ui/components/u-$1/u-$1.vue"
+	},
 	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
 		{
 			"path": "pages/index/index",
@@ -9,41 +9,64 @@
 				"navigationStyle": "custom",
 				"navigationBarTitleText": "个人中心"
 			}
+		}, {
+			"path": "pages/applyUp/applyUp",
+			"style": {
+				"navigationBarTitleText": "调休申请",
+				"enablePullDownRefresh": false
+			}
+
 		},{
-		    "path" : "pages/applyUp/applyUp",
-		    "style" :                                                                                    
-		    {
-		        "navigationBarTitleText": "调休申请",
-		        "enablePullDownRefresh": false
-		    }
-		    
-		},{
-		    "path" : "pages/user/user",
-		    "style" :                                                                                    
-		    {
-		       "navigationStyle": "custom"
-		    }
-		    
+			"path": "pages/applyEdit/applyEdit",
+			"style": {
+				"navigationBarTitleText": "调休申请",
+				"enablePullDownRefresh": false
+			}
+
+		}, {
+			"path": "pages/user/user",
+			"style": {
+				"navigationStyle": "custom"
+			}
+
+		}, {
+			"path": "pages/hdMessage/hdMessage",
+			"style": {
+				"navigationBarTitleText": "互调消息",
+				"enablePullDownRefresh": false
+			}
+		}, {
+			"path": "pages/closedUp/closedUp",
+			"style": {
+				"navigationBarTitleText": "公休申请审核",
+				"enablePullDownRefresh": false
+			}
+		}, {
+			"path": "pages/auditList/auditList",
+			"style": {
+				"navigationBarTitleText": "审核列表",
+				"enablePullDownRefresh": false
+			}
 		}
-       
-    ],
+
+	],
 	"tabBar": {
-	        "color": "#7A7E83", // tab 上的文字默认颜色
-	        "selectedColor": "#31CBD2", // tab 上的文字选中时的颜色
-	        "borderStyle": "black", // tabbar 上边框的颜色，可选值 black/white
-	        "backgroundColor": "#ffffff",  // tab 的背景色
-	        "list": [{ // 最少2个、最多5个 tab
-	            "pagePath": "pages/index/index", // 页面路径，必须在 pages 中先定义
-	            "iconPath": "static/tabbar/scheduling.png", // 图片路径，icon 大小限制为40kb，建议尺寸为 81px * 81px
-	            "selectedIconPath": "static/tabbar/scheduling_active.png", // 选中时的图片路径
-	            "text": "排班中心" // tab 上按钮文字
-	        }, {
-	            "pagePath": "pages/user/user",
-	            "iconPath": "static/tabbar/user.png",
-	            "selectedIconPath": "static/tabbar/user_active.png",
-	            "text": "个人中心"
-	        }]
-	    },
+		"color": "#7A7E83", // tab 上的文字默认颜色
+		"selectedColor": "#31CBD2", // tab 上的文字选中时的颜色
+		"borderStyle": "black", // tabbar 上边框的颜色，可选值 black/white
+		"backgroundColor": "#ffffff", // tab 的背景色
+		"list": [{ // 最少2个、最多5个 tab
+			"pagePath": "pages/index/index", // 页面路径，必须在 pages 中先定义
+			"iconPath": "static/tabbar/scheduling.png", // 图片路径，icon 大小限制为40kb，建议尺寸为 81px * 81px
+			"selectedIconPath": "static/tabbar/scheduling_active.png", // 选中时的图片路径
+			"text": "排班中心" // tab 上按钮文字
+		}, {
+			"pagePath": "pages/user/user",
+			"iconPath": "static/tabbar/user.png",
+			"selectedIconPath": "static/tabbar/user_active.png",
+			"text": "个人中心"
+		}]
+	},
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
 		"navigationBarTitleText": "uni-app",

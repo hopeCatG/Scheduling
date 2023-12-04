@@ -2,6 +2,7 @@
   "navigationStyle": "custom",
   "navigationBarTitleText": "个人中心",
   "usingComponents": {
+    "u-modal": "/uni_modules/uview-ui/components/u-modal/u-modal",
     "paiban": "/commom/paiban/paiban"
   }
 }

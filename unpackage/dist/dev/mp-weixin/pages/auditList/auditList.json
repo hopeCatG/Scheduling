@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "审核列表",
+  "enablePullDownRefresh": false,
+  "usingComponents": {
+    "u-tag": "/uni_modules/uview-ui/components/u-tag/u-tag"
+  }
+}

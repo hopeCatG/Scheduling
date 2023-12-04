@@ -47,7 +47,7 @@
 				<view class="grid-7 grid-sm text-bold padding-tb-sm">
 
 					<view class="text-black padding-tb-sm" v-for="(dateI,dateIndex) in datesWithWeekdays"
-						:key="dateIndex" >
+						:key="dateIndex" @click="clickDateI(dateI)">
 						<view :class="[dateI.date == dateArr[2] ? 'today' : '','padding-tb-xs']" v-if="dateI.date > 1">
 							<view class="text-center text-xl">
 								{{dateI.date}}
@@ -63,6 +63,11 @@
 			</view>
 
 		</view>
+		<u-modal :show="show" :title="title"  confirmText='取消'  @confirm='show = false'>
+			<view class="app-scroll-x">
+				<paiban></paiban>
+			</view>
+		</u-modal>
 	</view>
 </template>
 
@@ -73,7 +78,9 @@
 			return {
 				navHeight: 0,
 				datesWithWeekdays: [],
-				dateArr: []
+				dateArr: [],
+				show:false,
+				title:'2023'
 			}
 		},
 		components:{paiban},
@@ -166,6 +173,11 @@
 					}
 				});
 				return result;
+			},
+			// 查看日历某天排版情况
+			clickDateI(i){
+				this.title = `${this.dateArr[0]}-${this.dateArr[1]}-${i.date}排班详情`;
+				this.show = true;
 			}
 
 		}

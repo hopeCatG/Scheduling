@@ -2,7 +2,11 @@
   "pages": [
     "pages/index/index",
     "pages/applyUp/applyUp",
-    "pages/user/user"
+    "pages/applyEdit/applyEdit",
+    "pages/user/user",
+    "pages/hdMessage/hdMessage",
+    "pages/closedUp/closedUp",
+    "pages/auditList/auditList"
   ],
   "subPackages": [],
   "window": {
