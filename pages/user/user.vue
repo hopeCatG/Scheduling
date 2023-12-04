@@ -197,8 +197,8 @@ export default {
 	overflow: hidden;
 
 	.children {
-		width: 500rpx;
-		height: 500rpx;
+		width: 600rpx;
+		height: 600rpx;
 		border-radius: 50%;
 		background-color: #5FCCB5;
 		position: absolute;

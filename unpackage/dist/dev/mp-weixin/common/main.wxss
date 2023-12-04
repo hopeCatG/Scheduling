@@ -3257,6 +3257,7 @@ scroll-view.cu-steps .cu-item {
 	text-transform: Uppercase;
 }
 .text-abc {
+	
 	text-transform: Lowercase;
 }
 .text-price::before {
@@ -4542,16 +4543,49 @@ scroll-view.cu-steps .cu-item {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
 }
+.grid-7 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;
+}
 .grid-xs {
-  grid-row-gap: 5px;
-  grid-column-gap: 5px;
+  grid-row-gap: 10rpx;
+  grid-column-gap: 10rpx;
 }
 .grid-sm {
-  grid-row-gap: 10px;
-  grid-column-gap: 10px;
+  grid-row-gap: 20rpx;
+  grid-column-gap: 20rpx;
 }
 .grid-md {
-  grid-row-gap: 20px;
-  grid-column-gap: 20px;
+  grid-row-gap: 40rpx;
+  grid-column-gap: 40rpx;
+}
+.app-scroll {
+  overflow: hidden;
+  overflow-y: scroll;
+}
+.app-scroll-x {
+  overflow: hidden;
+  overflow-x: scroll;
+}
+.text-primary {
+  color: #3AC3A4;
+}
+.border {
+  border: 1px solid #F0F0F0;
+}
+.border-top {
+  border-top: 1px solid #F0F0F0;
+}
+.border-left {
+  border-left: 1px solid #F0F0F0;
+}
+.border-right {
+  border-right: 1px solid #F0F0F0;
+}
+.border-bottom {
+  border-bottom: 1px solid #F0F0F0;
+}
+.flot {
+  float: left;
 }
 
