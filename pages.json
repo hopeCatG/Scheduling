@@ -10,20 +10,6 @@
 				"navigationBarTitleText": "个人中心"
 			}
 		}, {
-			"path": "pages/applyUp/applyUp",
-			"style": {
-				"navigationBarTitleText": "调休申请",
-				"enablePullDownRefresh": false
-			}
-
-		},{
-			"path": "pages/applyEdit/applyEdit",
-			"style": {
-				"navigationBarTitleText": "调休申请",
-				"enablePullDownRefresh": false
-			}
-
-		}, {
 			"path": "pages/user/user",
 			"style": {
 				"navigationStyle": "custom"
@@ -50,6 +36,37 @@
 		}
 
 	],
+	"subpackages": [{
+		"root": "pagesApply",
+		"pages": [{
+				"path": "pages/applyEdit/applyEdit",
+				"style": {
+					"navigationBarTitleText": "调休申请",
+					"enablePullDownRefresh": false
+				}
+
+			},
+			{
+				"path": "pages/applyUp/applyUp",
+				"style": {
+					"navigationBarTitleText": "调休申请",
+					"enablePullDownRefresh": false
+				}
+
+			}
+		]
+	}],
+	"preloadRule": {
+			"pagesApply/pages/applyEdit/applyEdit": {
+				"network": "all",
+				"packages": ["pagesApply"]
+			},
+			"pagesApply/pages/applyUp/applyUp": {
+				"network": "all",
+				"packages": ["pagesApply"]
+			}
+			
+		},
 	"tabBar": {
 		"color": "#7A7E83", // tab 上的文字默认颜色
 		"selectedColor": "#31CBD2", // tab 上的文字选中时的颜色

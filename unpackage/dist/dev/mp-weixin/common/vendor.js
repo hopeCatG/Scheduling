@@ -14,7 +14,7 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.default = void 0;
-var objectKeys = ['qy', 'env', 'error', 'version', 'lanDebug', 'cloud', 'serviceMarket', 'router', 'worklet'];
+var objectKeys = ['qy', 'env', 'error', 'version', 'lanDebug', 'cloud', 'serviceMarket', 'router', 'worklet', '__webpack_require_UNI_MP_PLUGIN__'];
 var singlePageDisableKey = ['lanDebug', 'router', 'worklet'];
 var target = typeof globalThis !== 'undefined' ? globalThis : function () {
   return this;
@@ -248,22 +248,22 @@ function removeInterceptor(method, option) {
     removeInterceptorHook(globalInterceptors, method);
   }
 }
-function wrapperHook(hook) {
+function wrapperHook(hook, params) {
   return function (data) {
-    return hook(data) || data;
+    return hook(data, params) || data;
   };
 }
 function isPromise(obj) {
   return !!obj && ((0, _typeof2.default)(obj) === 'object' || typeof obj === 'function') && typeof obj.then === 'function';
 }
-function queue(hooks, data) {
+function queue(hooks, data, params) {
   var promise = false;
   for (var i = 0; i < hooks.length; i++) {
     var hook = hooks[i];
     if (promise) {
-      promise = Promise.resolve(wrapperHook(hook));
+      promise = Promise.resolve(wrapperHook(hook, params));
     } else {
-      var res = hook(data);
+      var res = hook(data, params);
       if (isPromise(res)) {
         promise = Promise.resolve(res);
       }
@@ -286,7 +286,7 @@ function wrapperOptions(interceptor) {
     if (Array.isArray(interceptor[name])) {
       var oldCallback = options[name];
       options[name] = function callbackInterceptor(res) {
-        queue(interceptor[name], res).then(function (res) {
+        queue(interceptor[name], res, options).then(function (res) {
           /* eslint-disable no-mixed-operators */
           return isFn(oldCallback) && oldCallback(res) || res;
         });
@@ -335,7 +335,8 @@ function invokeApi(method, api, options) {
     if (Array.isArray(interceptor.invoke)) {
       var res = queue(interceptor.invoke, options);
       return res.then(function (options) {
-        return api.apply(void 0, [wrapperOptions(interceptor, options)].concat(params));
+        // 重新访问 getApiInterceptorHooks, 允许 invoke 中再次调用 addInterceptor,removeInterceptor
+        return api.apply(void 0, [wrapperOptions(getApiInterceptorHooks(method), options)].concat(params));
       });
     } else {
       return api.apply(void 0, [wrapperOptions(interceptor, options)].concat(params));
@@ -774,13 +775,13 @@ function populateParameters(result) {
   // wx.getAccountInfoSync
 
   var parameters = {
-    appId: "__UNI__4CECDAA",
+    appId: "__UNI__BD96585",
     appName: "Scheduling",
     appVersion: "1.0.0",
     appVersionCode: "100",
     appLanguage: getAppLanguage(hostLanguage),
-    uniCompileVersion: "3.7.11",
-    uniRuntimeVersion: "3.7.11",
+    uniCompileVersion: "3.8.12",
+    uniRuntimeVersion: "3.8.12",
     uniPlatform: undefined || "mp-weixin",
     deviceBrand: deviceBrand,
     deviceModel: model,
@@ -873,7 +874,7 @@ var getAppBaseInfo = {
     var _hostName = getHostName(result);
     var hostLanguage = language.replace('_', '-');
     result = sortObject(Object.assign(result, {
-      appId: "__UNI__4CECDAA",
+      appId: "__UNI__BD96585",
       appName: "Scheduling",
       appVersion: "1.0.0",
       appVersionCode: "100",
@@ -1953,14 +1954,10 @@ function handleEvent(event) {
   }
 }
 var eventChannels = {};
-var eventChannelStack = [];
 function getEventChannel(id) {
-  if (id) {
-    var eventChannel = eventChannels[id];
-    delete eventChannels[id];
-    return eventChannel;
-  }
-  return eventChannelStack.shift();
+  var eventChannel = eventChannels[id];
+  delete eventChannels[id];
+  return eventChannel;
 }
 var hooks = ['onShow', 'onHide', 'onError', 'onPageNotFound', 'onThemeChange', 'onUnhandledRejection'];
 function initEventChannel() {
@@ -1982,38 +1979,54 @@ function initEventChannel() {
 function initScopedSlotsParams() {
   var center = {};
   var parents = {};
-  _vue.default.prototype.$hasScopedSlotsParams = function (vueId) {
-    var has = center[vueId];
-    if (!has) {
-      parents[vueId] = this;
-      this.$on('hook:destroyed', function () {
-        delete parents[vueId];
-      });
-    }
-    return has;
-  };
-  _vue.default.prototype.$getScopedSlotsParams = function (vueId, name, key) {
-    var data = center[vueId];
-    if (data) {
-      var object = data[name] || {};
-      return key ? object[key] : object;
-    } else {
-      parents[vueId] = this;
-      this.$on('hook:destroyed', function () {
-        delete parents[vueId];
-      });
-    }
-  };
-  _vue.default.prototype.$setScopedSlotsParams = function (name, value) {
+  function currentId(fn) {
     var vueIds = this.$options.propsData.vueId;
     if (vueIds) {
       var vueId = vueIds.split(',')[0];
-      var object = center[vueId] = center[vueId] || {};
-      object[name] = value;
+      fn(vueId);
+    }
+  }
+  _vue.default.prototype.$hasSSP = function (vueId) {
+    var slot = center[vueId];
+    if (!slot) {
+      parents[vueId] = this;
+      this.$on('hook:destroyed', function () {
+        delete parents[vueId];
+      });
+    }
+    return slot;
+  };
+  _vue.default.prototype.$getSSP = function (vueId, name, needAll) {
+    var slot = center[vueId];
+    if (slot) {
+      var params = slot[name] || [];
+      if (needAll) {
+        return params;
+      }
+      return params[0];
+    }
+  };
+  _vue.default.prototype.$setSSP = function (name, value) {
+    var index = 0;
+    currentId.call(this, function (vueId) {
+      var slot = center[vueId];
+      var params = slot[name] = slot[name] || [];
+      params.push(value);
+      index = params.length - 1;
+    });
+    return index;
+  };
+  _vue.default.prototype.$initSSP = function () {
+    currentId.call(this, function (vueId) {
+      center[vueId] = {};
+    });
+  };
+  _vue.default.prototype.$callSSP = function () {
+    currentId.call(this, function (vueId) {
       if (parents[vueId]) {
         parents[vueId].$forceUpdate();
       }
-    }
+    });
   };
   _vue.default.mixin({
     destroyed: function destroyed() {
@@ -2165,6 +2178,7 @@ function parseBaseComponent(vueComponentOptions) {
     vueOptions = _initVueComponent2[1];
   var options = _objectSpread({
     multipleSlots: true,
+    // styleIsolation: 'apply-shared',
     addGlobalClass: true
   }, vueOptions.options || {});
   {
@@ -2410,7 +2424,7 @@ if (typeof Proxy !== 'undefined' && "mp-weixin" !== 'app-plus') {
       uni[name] = promisify(name, todoApis[name]);
     });
     Object.keys(extraApi).forEach(function (name) {
-      uni[name] = promisify(name, todoApis[name]);
+      uni[name] = promisify(name, extraApi[name]);
     });
   }
   Object.keys(eventApi).forEach(function (name) {
@@ -2829,7 +2843,6 @@ var _slicedToArray2 = _interopRequireDefault(__webpack_require__(/*! @babel/runt
 var _classCallCheck2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/classCallCheck */ 23));
 var _createClass2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/createClass */ 24));
 var _typeof2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/typeof */ 13));
-var isArray = Array.isArray;
 var isObject = function isObject(val) {
   return val !== null && (0, _typeof2.default)(val) === 'object';
 };
@@ -2908,7 +2921,7 @@ function parse(format, _ref) {
 function compile(tokens, values) {
   var compiled = [];
   var index = 0;
-  var mode = isArray(values) ? 'list' : isObject(values) ? 'named' : 'unknown';
+  var mode = Array.isArray(values) ? 'list' : isObject(values) ? 'named' : 'unknown';
   if (mode === 'unknown') {
     return compiled;
   }
@@ -2974,6 +2987,10 @@ function normalizeLocale(locale, messages) {
     return locale;
   }
   locale = locale.toLowerCase();
+  if (locale === 'chinese') {
+    // 支付宝
+    return LOCALE_ZH_HANS;
+  }
   if (locale.indexOf('zh') === 0) {
     if (locale.indexOf('-hans') > -1) {
       return LOCALE_ZH_HANS;
@@ -2986,7 +3003,11 @@ function normalizeLocale(locale, messages) {
     }
     return LOCALE_ZH_HANS;
   }
-  var lang = startsWith(locale, [LOCALE_EN, LOCALE_FR, LOCALE_ES]);
+  var locales = [LOCALE_EN, LOCALE_FR, LOCALE_ES];
+  if (messages && Object.keys(messages).length > 0) {
+    locales = Object.keys(messages);
+  }
+  var lang = startsWith(locale, locales);
   if (lang) {
     return lang;
   }
@@ -3293,7 +3314,7 @@ function compileJsonObj(jsonObj, localeValues, delimiters) {
   return jsonObj;
 }
 function walkJsonObj(jsonObj, walk) {
-  if (isArray(jsonObj)) {
+  if (Array.isArray(jsonObj)) {
     for (var i = 0; i < jsonObj.length; i++) {
       if (walk(jsonObj, i)) {
         return true;
@@ -3385,7 +3406,7 @@ module.exports = _createClass, module.exports.__esModule = true, module.exports[
 __webpack_require__.r(__webpack_exports__);
 /* WEBPACK VAR INJECTION */(function(global) {/*!
  * Vue.js v2.6.11
- * (c) 2014-2022 Evan You
+ * (c) 2014-2023 Evan You
  * Released under the MIT License.
  */
 /*  */
@@ -9395,12 +9416,13 @@ var LIFECYCLE_HOOKS$1 = [
     'onNavigationBarSearchInputChanged',
     'onNavigationBarSearchInputConfirmed',
     'onNavigationBarSearchInputClicked',
+    'onUploadDouyinVideo',
+    'onNFCReadMessage',
     //Component
     // 'onReady', // 兼容旧版本，应该移除该事件
     'onPageShow',
     'onPageHide',
-    'onPageResize',
-    'onUploadDouyinVideo'
+    'onPageResize'
 ];
 function lifecycleMixin$1(Vue) {
 
@@ -10996,7 +11018,7 @@ var clone = function () {
 }();
 var _default = clone;
 exports.default = _default;
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../../../../../../software/HBuilderX/plugins/uniapp-cli/node_modules/buffer/index.js */ 51).Buffer))
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../../../../../../Software/HBuilderX/plugins/uniapp-cli/node_modules/buffer/index.js */ 51).Buffer))
 
 /***/ }),
 /* 51 */
@@ -19214,17 +19236,1514 @@ var _default = platform;
 exports.default = _default;
 
 /***/ }),
-/* 159 */,
-/* 160 */,
-/* 161 */,
-/* 162 */,
-/* 163 */,
-/* 164 */,
-/* 165 */,
-/* 166 */,
-/* 167 */,
-/* 168 */,
-/* 169 */,
+/* 159 */
+/*!*************************************************************!*\
+  !*** D:/GitHub/Scheduling/zhouWei-request/requestConfig.js ***!
+  \*************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(uni) {
+
+var _interopRequireDefault = __webpack_require__(/*! @babel/runtime/helpers/interopRequireDefault */ 4);
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _regenerator = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/regenerator */ 56));
+var _asyncToGenerator2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/asyncToGenerator */ 58));
+var _request = _interopRequireDefault(__webpack_require__(/*! ./request */ 160));
+var _App = _interopRequireDefault(__webpack_require__(/*! ../App.vue */ 27));
+function _createForOfIteratorHelper(o, allowArrayLike) { var it = typeof Symbol !== "undefined" && o[Symbol.iterator] || o["@@iterator"]; if (!it) { if (Array.isArray(o) || (it = _unsupportedIterableToArray(o)) || allowArrayLike && o && typeof o.length === "number") { if (it) o = it; var i = 0; var F = function F() {}; return { s: F, n: function n() { if (i >= o.length) return { done: true }; return { done: false, value: o[i++] }; }, e: function e(_e) { throw _e; }, f: F }; } throw new TypeError("Invalid attempt to iterate non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); } var normalCompletion = true, didErr = false, err; return { s: function s() { it = it.call(o); }, n: function n() { var step = it.next(); normalCompletion = step.done; return step; }, e: function e(_e2) { didErr = true; err = _e2; }, f: function f() { try { if (!normalCompletion && it.return != null) it.return(); } finally { if (didErr) throw err; } } }; }
+function _unsupportedIterableToArray(o, minLen) { if (!o) return; if (typeof o === "string") return _arrayLikeToArray(o, minLen); var n = Object.prototype.toString.call(o).slice(8, -1); if (n === "Object" && o.constructor) n = o.constructor.name; if (n === "Map" || n === "Set") return Array.from(o); if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen); }
+function _arrayLikeToArray(arr, len) { if (len == null || len > arr.length) len = arr.length; for (var i = 0, arr2 = new Array(len); i < len; i++) { arr2[i] = arr[i]; } return arr2; }
+// 全局配置的请求域名
+
+// let baseUrl = 'https://api.svipershop.com/api/';
+var baseUrl = 'http://36.134.163.172:9012/api/';
+
+//可以new多个request来支持多个域名请求
+var $http = new _request.default({
+  //接口请求地址
+  baseUrl: baseUrl,
+  //服务器本地上传文件地址
+  fileUrl: baseUrl,
+  // 服务器上传图片默认url
+  defaultUploadUrl: "api/common/v1/upload_image",
+  //设置请求头（如果使用报错跨域问题，可能是content-type请求类型和后台那边设置的不一致）
+  header: {
+    'content-type': 'application/json;charset=UTF-8'
+  },
+  // 请求超时时间（默认6000）
+  timeout: 6000,
+  // 默认配置（可不写）
+  config: {
+    // 是否自动提示错误
+    isPrompt: true,
+    // 是否显示加载动画
+    load: true,
+    // 是否使用数据工厂
+    isFactory: true
+  }
+});
+
+// 添加获取七牛云token的方法
+$http.getQnToken = function (callback) {
+  //该地址需要开发者自行配置（每个后台的接口风格都不一样）
+  $http.get("api/kemean/aid/qn_upload").then(function (data) {
+    /*
+     *接口返回参数：
+     *visitPrefix:访问文件的域名
+     *token:七牛云上传token
+     *folderPath:上传的文件夹
+     *region: 地区 默认为：SCN
+     */
+    callback({
+      visitPrefix: data.visitPrefix,
+      token: data.token,
+      folderPath: data.folderPath,
+      region: "SCN"
+    });
+  });
+};
+
+//当前接口请求数
+var requestNum = 0;
+//请求开始拦截器
+$http.requestStart = function (options) {
+  // 图片上传大小限制
+  if (options.method == "FILE" && options.maxSize) {
+    // 文件最大字节: options.maxSize 可以在调用方法的时候加入参数
+    var maxSize = options.maxSize;
+    var _iterator = _createForOfIteratorHelper(options.files),
+      _step;
+    try {
+      for (_iterator.s(); !(_step = _iterator.n()).done;) {
+        var item = _step.value;
+        if (item.size > maxSize) {
+          setTimeout(function () {
+            uni.showToast({
+              title: "图片过大，请重新上传",
+              icon: "none"
+            });
+          }, 500);
+          return false;
+        }
+      }
+    } catch (err) {
+      _iterator.e(err);
+    } finally {
+      _iterator.f();
+    }
+  }
+  var locale = uni.getStorageSync('locale');
+  var token = uni.getStorageSync('token');
+  // let token = '0a7129d1-dcca-40b6-a3c8-2463796ed307';
+  //请求前加入
+  if (locale) {
+    options.header['Accept-Language'] = locale;
+  }
+  if (token) {
+    options.header['Token'] = token;
+  }
+  return options; // return false 表示请求拦截，不会继续请求
+};
+//请求结束
+
+//所有接口数据处理（可在接口里设置不调用此方法）
+//此方法需要开发者根据各自的接口返回类型修改，以下只是模板
+$http.dataFactory = /*#__PURE__*/function () {
+  var _ref = (0, _asyncToGenerator2.default)( /*#__PURE__*/_regenerator.default.mark(function _callee(res) {
+    var httpData;
+    return _regenerator.default.wrap(function _callee$(_context) {
+      while (1) {
+        switch (_context.prev = _context.next) {
+          case 0:
+            console.log('resresresresresresres');
+            console.log(res);
+            // console.log("接口请求数据", {
+            // 	url: res.url,
+            // 	resolve: res.response,
+            // 	header: res.header,
+            // 	data: res.data,
+            // 	method: res.method,
+            // });
+            if (!(res.response.statusCode && res.response.statusCode == 200)) {
+              _context.next = 22;
+              break;
+            }
+            httpData = res.response.data;
+            /*********以下只是模板(及共参考)，需要开发者根据各自的接口返回类型修改*********/
+            //判断数据是否请求成功
+            if (!(httpData.success || httpData.code == 1 || httpData.code == 200)) {
+              _context.next = 8;
+              break;
+            }
+            return _context.abrupt("return", Promise.resolve(httpData.data));
+          case 8:
+            if (!(httpData.code == 500)) {
+              _context.next = 13;
+              break;
+            }
+            uni.showToast({
+              title: httpData.msg,
+              // 重点------把接口返回的错误抛出显示
+              icon: "none"
+            });
+            // 返回错误的结果(catch接受数据)
+            return _context.abrupt("return", Promise.reject(httpData.data));
+          case 13:
+            if (!(httpData.code == 401)) {
+              _context.next = 18;
+              break;
+            }
+            uni.showToast({
+              title: httpData.msg,
+              // 重点------把接口返回的错误抛出显示
+              icon: "none"
+            });
+            // 返回错误的结果(catch接受数据)
+            return _context.abrupt("return", Promise.reject(httpData.data));
+          case 18:
+            //其他错误提示
+            uni.showToast({
+              title: httpData.msg,
+              // 重点------把接口返回的错误抛出显示
+              icon: "none"
+            });
+            return _context.abrupt("return", Promise.resolve(httpData.nessage));
+          case 20:
+            _context.next = 23;
+            break;
+          case 22:
+            return _context.abrupt("return", Promise.reject({
+              statusCode: res.response.statusCode,
+              errMsg: "【request】数据工厂验证不通过"
+            }));
+          case 23:
+          case "end":
+            return _context.stop();
+        }
+      }
+    }, _callee);
+  }));
+  return function (_x) {
+    return _ref.apply(this, arguments);
+  };
+}();
+// 错误回调
+$http.requestError = function (e) {
+  // e.statusCode === 0 是参数效验错误抛出的
+  if (e.statusCode === 0) {
+    throw e;
+  } else if (e.statusCode === 401) {
+    uni.showToast({
+      title: "login error！",
+      icon: "none"
+    });
+  } else {
+    uni.showToast({
+      title: "网络错误，请检查一下网络",
+      icon: "none"
+    });
+  }
+};
+var _default = $http;
+exports.default = _default;
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
+
+/***/ }),
+/* 160 */
+/*!*************************************************************!*\
+  !*** D:/GitHub/Scheduling/zhouWei-request/request/index.js ***!
+  \*************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var _interopRequireDefault = __webpack_require__(/*! @babel/runtime/helpers/interopRequireDefault */ 4);
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _upload = _interopRequireDefault(__webpack_require__(/*! ./upload/upload.js */ 161));
+/***************纯粹的数据请求（如果使用这种可以删除掉fileUpload.js）******************/
+// import request from "./core/request.js";
+// export default request;
+/********数据请求同时继承了文件上传（包括七牛云上传）************/
+var _default = _upload.default;
+exports.default = _default;
+
+/***/ }),
+/* 161 */
+/*!*********************************************************************!*\
+  !*** D:/GitHub/Scheduling/zhouWei-request/request/upload/upload.js ***!
+  \*********************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var _interopRequireDefault = __webpack_require__(/*! @babel/runtime/helpers/interopRequireDefault */ 4);
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _regenerator = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/regenerator */ 56));
+var _typeof2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/typeof */ 13));
+var _defineProperty2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/defineProperty */ 11));
+var _asyncToGenerator2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/asyncToGenerator */ 58));
+var _classCallCheck2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/classCallCheck */ 23));
+var _createClass2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/createClass */ 24));
+var _inherits2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/inherits */ 162));
+var _possibleConstructorReturn2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/possibleConstructorReturn */ 163));
+var _getPrototypeOf2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/getPrototypeOf */ 165));
+var _request2 = _interopRequireDefault(__webpack_require__(/*! ./../core/request.js */ 166));
+var _utils = __webpack_require__(/*! ./../core/utils.js */ 167);
+function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); enumerableOnly && (symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; })), keys.push.apply(keys, symbols); } return keys; }
+function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = null != arguments[i] ? arguments[i] : {}; i % 2 ? ownKeys(Object(source), !0).forEach(function (key) { (0, _defineProperty2.default)(target, key, source[key]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)) : ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } return target; }
+function _createSuper(Derived) { var hasNativeReflectConstruct = _isNativeReflectConstruct(); return function _createSuperInternal() { var Super = (0, _getPrototypeOf2.default)(Derived), result; if (hasNativeReflectConstruct) { var NewTarget = (0, _getPrototypeOf2.default)(this).constructor; result = Reflect.construct(Super, arguments, NewTarget); } else { result = Super.apply(this, arguments); } return (0, _possibleConstructorReturn2.default)(this, result); }; }
+function _isNativeReflectConstruct() { if (typeof Reflect === "undefined" || !Reflect.construct) return false; if (Reflect.construct.sham) return false; if (typeof Proxy === "function") return true; try { Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {})); return true; } catch (e) { return false; } }
+var _require = __webpack_require__(/*! ./utils */ 168),
+  chooseImage = _require.chooseImage,
+  chooseVideo = _require.chooseVideo,
+  qiniuUpload = _require.qiniuUpload,
+  urlUpload = _require.urlUpload;
+var fileUpload = /*#__PURE__*/function (_request) {
+  (0, _inherits2.default)(fileUpload, _request);
+  var _super = _createSuper(fileUpload);
+  function fileUpload(props) {
+    (0, _classCallCheck2.default)(this, fileUpload);
+    // 调用实现父类的构造函数
+    return _super.call(this, props);
+  }
+  //七牛云上传图片
+  (0, _createClass2.default)(fileUpload, [{
+    key: "qnImgUpload",
+    value: function () {
+      var _qnImgUpload = (0, _asyncToGenerator2.default)( /*#__PURE__*/_regenerator.default.mark(function _callee() {
+        var options,
+          files,
+          _args = arguments;
+        return _regenerator.default.wrap(function _callee$(_context) {
+          while (1) {
+            switch (_context.prev = _context.next) {
+              case 0:
+                options = _args.length > 0 && _args[0] !== undefined ? _args[0] : {};
+                _context.prev = 1;
+                _context.next = 4;
+                return chooseImage(options);
+              case 4:
+                files = _context.sent;
+                // 选择完成回调
+                options.onSelectComplete && options.onSelectComplete(files);
+                _context.next = 12;
+                break;
+              case 8:
+                _context.prev = 8;
+                _context.t0 = _context["catch"](1);
+                this.requestError && this.requestError(_context.t0);
+                return _context.abrupt("return", Promise.reject(_context.t0));
+              case 12:
+                if (!files) {
+                  _context.next = 14;
+                  break;
+                }
+                return _context.abrupt("return", this.qnFileUpload(_objectSpread(_objectSpread({}, options), {}, {
+                  files: files
+                })));
+              case 14:
+              case "end":
+                return _context.stop();
+            }
+          }
+        }, _callee, this, [[1, 8]]);
+      }));
+      function qnImgUpload() {
+        return _qnImgUpload.apply(this, arguments);
+      }
+      return qnImgUpload;
+    }() //七牛云上传视频
+  }, {
+    key: "qnVideoUpload",
+    value: function () {
+      var _qnVideoUpload = (0, _asyncToGenerator2.default)( /*#__PURE__*/_regenerator.default.mark(function _callee2() {
+        var options,
+          files,
+          _args2 = arguments;
+        return _regenerator.default.wrap(function _callee2$(_context2) {
+          while (1) {
+            switch (_context2.prev = _context2.next) {
+              case 0:
+                options = _args2.length > 0 && _args2[0] !== undefined ? _args2[0] : {};
+                _context2.prev = 1;
+                _context2.next = 4;
+                return chooseVideo(options);
+              case 4:
+                files = _context2.sent;
+                // 选择完成回调
+                options.onSelectComplete && options.onSelectComplete(files);
+                _context2.next = 12;
+                break;
+              case 8:
+                _context2.prev = 8;
+                _context2.t0 = _context2["catch"](1);
+                this.requestError && this.requestError(_context2.t0);
+                return _context2.abrupt("return", Promise.reject(_context2.t0));
+              case 12:
+                if (!files) {
+                  _context2.next = 14;
+                  break;
+                }
+                return _context2.abrupt("return", this.qnFileUpload(_objectSpread(_objectSpread({}, options), {}, {
+                  files: files
+                })));
+              case 14:
+              case "end":
+                return _context2.stop();
+            }
+          }
+        }, _callee2, this, [[1, 8]]);
+      }));
+      function qnVideoUpload() {
+        return _qnVideoUpload.apply(this, arguments);
+      }
+      return qnVideoUpload;
+    }() //七牛云文件上传（支持多张上传）
+  }, {
+    key: "qnFileUpload",
+    value: function () {
+      var _qnFileUpload = (0, _asyncToGenerator2.default)( /*#__PURE__*/_regenerator.default.mark(function _callee3() {
+        var options,
+          requestInfo,
+          requestStart,
+          changekeys,
+          requestResult,
+          _args3 = arguments;
+        return _regenerator.default.wrap(function _callee3$(_context3) {
+          while (1) {
+            switch (_context3.prev = _context3.next) {
+              case 0:
+                options = _args3.length > 0 && _args3[0] !== undefined ? _args3[0] : {};
+                _context3.prev = 1;
+                // 数据合并
+                requestInfo = _objectSpread(_objectSpread(_objectSpread({}, this.config), options), {}, {
+                  header: {},
+                  method: "FILE"
+                });
+                //请求前回调
+                if (!this.requestStart) {
+                  _context3.next = 11;
+                  break;
+                }
+                requestStart = this.requestStart(requestInfo);
+                if (!((0, _typeof2.default)(requestStart) == "object")) {
+                  _context3.next = 10;
+                  break;
+                }
+                changekeys = ["load", "files"];
+                changekeys.forEach(function (key) {
+                  requestInfo[key] = requestStart[key];
+                });
+                _context3.next = 11;
+                break;
+              case 10:
+                throw {
+                  errMsg: "【request】请求开始拦截器未通过",
+                  statusCode: 0,
+                  data: requestInfo.data,
+                  method: requestInfo.method,
+                  header: requestInfo.header,
+                  url: requestInfo.url
+                };
+              case 11:
+                _context3.next = 13;
+                return qiniuUpload(requestInfo, this.getQnToken);
+              case 13:
+                requestResult = _context3.sent;
+                return _context3.abrupt("return", Promise.resolve(requestResult));
+              case 17:
+                _context3.prev = 17;
+                _context3.t0 = _context3["catch"](1);
+                this.requestError && this.requestError(_context3.t0);
+                return _context3.abrupt("return", Promise.reject(_context3.t0));
+              case 21:
+                _context3.prev = 21;
+                this.requestEnd && this.requestEnd(requestInfo);
+                return _context3.finish(21);
+              case 24:
+              case "end":
+                return _context3.stop();
+            }
+          }
+        }, _callee3, this, [[1, 17, 21, 24]]);
+      }));
+      function qnFileUpload() {
+        return _qnFileUpload.apply(this, arguments);
+      }
+      return qnFileUpload;
+    }() //本地服务器图片上传
+  }, {
+    key: "urlImgUpload",
+    value: function () {
+      var _urlImgUpload = (0, _asyncToGenerator2.default)( /*#__PURE__*/_regenerator.default.mark(function _callee4() {
+        var options,
+          _args4 = arguments;
+        return _regenerator.default.wrap(function _callee4$(_context4) {
+          while (1) {
+            switch (_context4.prev = _context4.next) {
+              case 0:
+                options = {};
+                if (_args4[0]) {
+                  if (typeof _args4[0] == "string") {
+                    options.url = _args4[0];
+                  } else if ((0, _typeof2.default)(_args4[0]) == "object") {
+                    options = Object.assign(options, _args4[0]);
+                  }
+                }
+                if (_args4[1] && (0, _typeof2.default)(_args4[1]) == "object") {
+                  options = Object.assign(options, _args4[1]);
+                }
+                _context4.prev = 3;
+                _context4.next = 6;
+                return chooseImage(options);
+              case 6:
+                options.files = _context4.sent;
+                // 选择完成回调
+                options.onSelectComplete && options.onSelectComplete(options.files);
+                _context4.next = 14;
+                break;
+              case 10:
+                _context4.prev = 10;
+                _context4.t0 = _context4["catch"](3);
+                this.requestError && this.requestError(_context4.t0);
+                return _context4.abrupt("return", Promise.reject(_context4.t0));
+              case 14:
+                if (!options.files) {
+                  _context4.next = 16;
+                  break;
+                }
+                return _context4.abrupt("return", this.urlFileUpload(options));
+              case 16:
+              case "end":
+                return _context4.stop();
+            }
+          }
+        }, _callee4, this, [[3, 10]]);
+      }));
+      function urlImgUpload() {
+        return _urlImgUpload.apply(this, arguments);
+      }
+      return urlImgUpload;
+    }() //本地服务器上传视频
+  }, {
+    key: "urlVideoUpload",
+    value: function () {
+      var _urlVideoUpload = (0, _asyncToGenerator2.default)( /*#__PURE__*/_regenerator.default.mark(function _callee5() {
+        var options,
+          _args5 = arguments;
+        return _regenerator.default.wrap(function _callee5$(_context5) {
+          while (1) {
+            switch (_context5.prev = _context5.next) {
+              case 0:
+                options = {};
+                if (_args5[0]) {
+                  if (typeof _args5[0] == "string") {
+                    options.url = _args5[0];
+                  } else if ((0, _typeof2.default)(_args5[0]) == "object") {
+                    options = Object.assign(options, _args5[0]);
+                  }
+                }
+                if (_args5[1] && (0, _typeof2.default)(_args5[1]) == "object") {
+                  options = Object.assign(options, _args5[1]);
+                }
+                _context5.prev = 3;
+                _context5.next = 6;
+                return chooseVideo(options);
+              case 6:
+                options.files = _context5.sent;
+                // 选择完成回调
+                options.onSelectComplete && options.onSelectComplete(options.files);
+                _context5.next = 14;
+                break;
+              case 10:
+                _context5.prev = 10;
+                _context5.t0 = _context5["catch"](3);
+                this.requestError && this.requestError(_context5.t0);
+                return _context5.abrupt("return", Promise.reject(_context5.t0));
+              case 14:
+                if (!options.files) {
+                  _context5.next = 16;
+                  break;
+                }
+                return _context5.abrupt("return", this.urlFileUpload(options));
+              case 16:
+              case "end":
+                return _context5.stop();
+            }
+          }
+        }, _callee5, this, [[3, 10]]);
+      }));
+      function urlVideoUpload() {
+        return _urlVideoUpload.apply(this, arguments);
+      }
+      return urlVideoUpload;
+    }() //本地服务器文件上传方法
+  }, {
+    key: "urlFileUpload",
+    value: function () {
+      var _urlFileUpload = (0, _asyncToGenerator2.default)( /*#__PURE__*/_regenerator.default.mark(function _callee6() {
+        var requestInfo,
+          runRequestStart,
+          requestStart,
+          changekeys,
+          requestResult,
+          _args6 = arguments;
+        return _regenerator.default.wrap(function _callee6$(_context6) {
+          while (1) {
+            switch (_context6.prev = _context6.next) {
+              case 0:
+                requestInfo = {
+                  method: "FILE"
+                };
+                if (_args6[0]) {
+                  if (typeof _args6[0] == "string") {
+                    requestInfo.url = _args6[0];
+                  } else if ((0, _typeof2.default)(_args6[0]) == "object") {
+                    requestInfo = Object.assign(requestInfo, _args6[0]);
+                  }
+                }
+                if (_args6[1] && (0, _typeof2.default)(_args6[1]) == "object") {
+                  requestInfo = Object.assign(requestInfo, _args6[1]);
+                }
+                if (!requestInfo.url && this.defaultUploadUrl) {
+                  requestInfo.url = this.defaultUploadUrl;
+                }
+                // 请求数据
+                // 是否运行过请求开始钩子
+                runRequestStart = false;
+                _context6.prev = 5;
+                if (requestInfo.url) {
+                  _context6.next = 8;
+                  break;
+                }
+                throw {
+                  errMsg: "【request】文件上传缺失数据url",
+                  statusCode: 0,
+                  data: requestInfo.data,
+                  method: requestInfo.method,
+                  header: requestInfo.header,
+                  url: requestInfo.url
+                };
+              case 8:
+                // 数据合并
+                requestInfo = (0, _utils.mergeConfig)(this, requestInfo);
+                // 代表之前运行到这里
+                runRequestStart = true;
+                //请求前回调
+                if (!this.requestStart) {
+                  _context6.next = 18;
+                  break;
+                }
+                requestStart = this.requestStart(requestInfo);
+                if (!((0, _typeof2.default)(requestStart) == "object")) {
+                  _context6.next = 17;
+                  break;
+                }
+                changekeys = ["data", "header", "isPrompt", "load", "isFactory", "files"];
+                changekeys.forEach(function (key) {
+                  requestInfo[key] = requestStart[key];
+                });
+                _context6.next = 18;
+                break;
+              case 17:
+                throw {
+                  errMsg: "【request】请求开始拦截器未通过",
+                  statusCode: 0,
+                  data: requestInfo.data,
+                  method: requestInfo.method,
+                  header: requestInfo.header,
+                  url: requestInfo.url
+                };
+              case 18:
+                _context6.next = 20;
+                return urlUpload(requestInfo, this.dataFactory);
+              case 20:
+                requestResult = _context6.sent;
+                return _context6.abrupt("return", Promise.resolve(requestResult));
+              case 24:
+                _context6.prev = 24;
+                _context6.t0 = _context6["catch"](5);
+                this.requestError && this.requestError(_context6.t0);
+                return _context6.abrupt("return", Promise.reject(_context6.t0));
+              case 28:
+                _context6.prev = 28;
+                if (runRequestStart) {
+                  this.requestEnd && this.requestEnd(requestInfo);
+                }
+                return _context6.finish(28);
+              case 31:
+              case "end":
+                return _context6.stop();
+            }
+          }
+        }, _callee6, this, [[5, 24, 28, 31]]);
+      }));
+      function urlFileUpload() {
+        return _urlFileUpload.apply(this, arguments);
+      }
+      return urlFileUpload;
+    }()
+  }]);
+  return fileUpload;
+}(_request2.default);
+exports.default = fileUpload;
+
+/***/ }),
+/* 162 */
+/*!*********************************************************!*\
+  !*** ./node_modules/@babel/runtime/helpers/inherits.js ***!
+  \*********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var setPrototypeOf = __webpack_require__(/*! ./setPrototypeOf.js */ 16);
+function _inherits(subClass, superClass) {
+  if (typeof superClass !== "function" && superClass !== null) {
+    throw new TypeError("Super expression must either be null or a function");
+  }
+  subClass.prototype = Object.create(superClass && superClass.prototype, {
+    constructor: {
+      value: subClass,
+      writable: true,
+      configurable: true
+    }
+  });
+  Object.defineProperty(subClass, "prototype", {
+    writable: false
+  });
+  if (superClass) setPrototypeOf(subClass, superClass);
+}
+module.exports = _inherits, module.exports.__esModule = true, module.exports["default"] = module.exports;
+
+/***/ }),
+/* 163 */
+/*!**************************************************************************!*\
+  !*** ./node_modules/@babel/runtime/helpers/possibleConstructorReturn.js ***!
+  \**************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+var _typeof = __webpack_require__(/*! ./typeof.js */ 13)["default"];
+var assertThisInitialized = __webpack_require__(/*! ./assertThisInitialized.js */ 164);
+function _possibleConstructorReturn(self, call) {
+  if (call && (_typeof(call) === "object" || typeof call === "function")) {
+    return call;
+  } else if (call !== void 0) {
+    throw new TypeError("Derived constructors may only return object or undefined");
+  }
+  return assertThisInitialized(self);
+}
+module.exports = _possibleConstructorReturn, module.exports.__esModule = true, module.exports["default"] = module.exports;
+
+/***/ }),
+/* 164 */
+/*!**********************************************************************!*\
+  !*** ./node_modules/@babel/runtime/helpers/assertThisInitialized.js ***!
+  \**********************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+function _assertThisInitialized(self) {
+  if (self === void 0) {
+    throw new ReferenceError("this hasn't been initialised - super() hasn't been called");
+  }
+  return self;
+}
+module.exports = _assertThisInitialized, module.exports.__esModule = true, module.exports["default"] = module.exports;
+
+/***/ }),
+/* 165 */
+/*!***************************************************************!*\
+  !*** ./node_modules/@babel/runtime/helpers/getPrototypeOf.js ***!
+  \***************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+function _getPrototypeOf(o) {
+  module.exports = _getPrototypeOf = Object.setPrototypeOf ? Object.getPrototypeOf.bind() : function _getPrototypeOf(o) {
+    return o.__proto__ || Object.getPrototypeOf(o);
+  }, module.exports.__esModule = true, module.exports["default"] = module.exports;
+  return _getPrototypeOf(o);
+}
+module.exports = _getPrototypeOf, module.exports.__esModule = true, module.exports["default"] = module.exports;
+
+/***/ }),
+/* 166 */
+/*!********************************************************************!*\
+  !*** D:/GitHub/Scheduling/zhouWei-request/request/core/request.js ***!
+  \********************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var _interopRequireDefault = __webpack_require__(/*! @babel/runtime/helpers/interopRequireDefault */ 4);
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _regenerator = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/regenerator */ 56));
+var _typeof2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/typeof */ 13));
+var _asyncToGenerator2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/asyncToGenerator */ 58));
+var _defineProperty2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/defineProperty */ 11));
+var _classCallCheck2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/classCallCheck */ 23));
+var _createClass2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/createClass */ 24));
+var _utils = __webpack_require__(/*! ./utils.js */ 167);
+function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); enumerableOnly && (symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; })), keys.push.apply(keys, symbols); } return keys; }
+function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = null != arguments[i] ? arguments[i] : {}; i % 2 ? ownKeys(Object(source), !0).forEach(function (key) { (0, _defineProperty2.default)(target, key, source[key]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)) : ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } return target; }
+var request = /*#__PURE__*/function () {
+  function request(options) {
+    (0, _classCallCheck2.default)(this, request);
+    //请求公共地址
+    this.baseUrl = options.baseUrl || "";
+    //公共文件上传请求地址
+    this.fileUrl = options.fileUrl || "";
+    // 超时时间
+    this.timeout = options.timeout || 6000;
+    // 服务器上传图片默认url
+    this.defaultUploadUrl = options.defaultUploadUrl || "";
+    //默认请求头
+    this.header = options.header || {};
+    //默认配置
+    this.config = options.config || {
+      isPrompt: true,
+      load: true,
+      isFactory: true,
+      resend: 0
+    };
+  }
+  //post请求
+  (0, _createClass2.default)(request, [{
+    key: "post",
+    value: function post() {
+      var url = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+      var data = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      return this.request(_objectSpread({
+        method: "POST",
+        data: data,
+        url: url
+      }, options));
+    }
+
+    //get请求
+  }, {
+    key: "get",
+    value: function get() {
+      var url = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+      var data = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      return this.request(_objectSpread({
+        method: "GET",
+        data: data,
+        url: url
+      }, options));
+    }
+
+    //put请求
+  }, {
+    key: "put",
+    value: function put() {
+      var url = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+      var data = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      return this.request(_objectSpread({
+        method: "PUT",
+        data: data,
+        url: url
+      }, options));
+    }
+
+    //delete请求
+  }, {
+    key: "delete",
+    value: function _delete() {
+      var url = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+      var data = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      return this.request(_objectSpread({
+        method: "DELETE",
+        data: data,
+        url: url
+      }, options));
+    }
+    //jsonp请求(只限于H5使用)
+  }, {
+    key: "jsonp",
+    value: function jsonp() {
+      var url = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : '';
+      var data = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      return this.request(_objectSpread({
+        method: "JSONP",
+        data: data,
+        url: url
+      }, options));
+    }
+    //接口请求方法
+  }, {
+    key: "request",
+    value: function () {
+      var _request = (0, _asyncToGenerator2.default)( /*#__PURE__*/_regenerator.default.mark(function _callee(data) {
+        var requestInfo, runRequestStart, requestStart, changekeys, requestResult, result;
+        return _regenerator.default.wrap(function _callee$(_context) {
+          while (1) {
+            switch (_context.prev = _context.next) {
+              case 0:
+                // 请求数据
+                runRequestStart = false;
+                _context.prev = 1;
+                if (data.url) {
+                  _context.next = 4;
+                  break;
+                }
+                throw {
+                  errMsg: "【request】缺失数据url",
+                  statusCode: 0
+                };
+              case 4:
+                // 数据合并
+                requestInfo = (0, _utils.mergeConfig)(this, data);
+                // 代表之前运行到这里
+                runRequestStart = true;
+                //请求前回调
+                if (!this.requestStart) {
+                  _context.next = 14;
+                  break;
+                }
+                requestStart = this.requestStart(requestInfo);
+                if (!((0, _typeof2.default)(requestStart) == "object")) {
+                  _context.next = 13;
+                  break;
+                }
+                changekeys = ["data", "header", "isPrompt", "load", "isFactory"];
+                changekeys.forEach(function (key) {
+                  requestInfo[key] = requestStart[key];
+                });
+                _context.next = 14;
+                break;
+              case 13:
+                throw {
+                  errMsg: "【request】请求开始拦截器未通过",
+                  statusCode: 0,
+                  data: requestInfo.data,
+                  method: requestInfo.method,
+                  header: requestInfo.header,
+                  url: requestInfo.url
+                };
+              case 14:
+                requestResult = {};
+                if (!(requestInfo.method == "JSONP")) {
+                  _context.next = 21;
+                  break;
+                }
+                _context.next = 18;
+                return (0, _utils.jsonpRequest)(requestInfo);
+              case 18:
+                requestResult = _context.sent;
+                _context.next = 24;
+                break;
+              case 21:
+                _context.next = 23;
+                return (0, _utils.dispatchRequest)(requestInfo);
+              case 23:
+                requestResult = _context.sent;
+              case 24:
+                if (!(requestInfo.isFactory && this.dataFactory)) {
+                  _context.next = 31;
+                  break;
+                }
+                _context.next = 27;
+                return this.dataFactory(_objectSpread(_objectSpread({}, requestInfo), {}, {
+                  response: requestResult
+                }));
+              case 27:
+                result = _context.sent;
+                return _context.abrupt("return", Promise.resolve(result));
+              case 31:
+                return _context.abrupt("return", Promise.resolve(requestResult));
+              case 32:
+                _context.next = 38;
+                break;
+              case 34:
+                _context.prev = 34;
+                _context.t0 = _context["catch"](1);
+                this.requestError && this.requestError(_context.t0);
+                return _context.abrupt("return", Promise.reject(_context.t0));
+              case 38:
+                _context.prev = 38;
+                // 如果请求开始未运行到，请求结束也不运行
+                if (runRequestStart) {
+                  this.requestEnd && this.requestEnd(requestInfo);
+                }
+                return _context.finish(38);
+              case 41:
+              case "end":
+                return _context.stop();
+            }
+          }
+        }, _callee, this, [[1, 34, 38, 41]]);
+      }));
+      function request(_x) {
+        return _request.apply(this, arguments);
+      }
+      return request;
+    }()
+  }]);
+  return request;
+}();
+exports.default = request;
+
+/***/ }),
+/* 167 */
+/*!******************************************************************!*\
+  !*** D:/GitHub/Scheduling/zhouWei-request/request/core/utils.js ***!
+  \******************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(uni) {
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.mergeConfig = exports.jsonpRequest = exports.dispatchRequest = void 0;
+// 获取合并的数据
+var mergeConfig = function mergeConfig(_this, options) {
+  //判断url是不是链接
+  var urlType = /^(http|https):\/\//.test(options.url);
+  var config = Object.assign({
+    timeout: _this.timeout
+  }, _this.config, options);
+  if (options.method == "FILE") {
+    config.url = urlType ? options.url : _this.fileUrl + options.url;
+  } else {
+    config.url = urlType ? options.url : _this.baseUrl + options.url;
+  }
+  //请求头
+  if (options.header) {
+    config.header = Object.assign({}, _this.header, options.header);
+  } else {
+    config.header = Object.assign({}, _this.header);
+  }
+  return config;
+};
+// 请求
+exports.mergeConfig = mergeConfig;
+var dispatchRequest = function dispatchRequest(requestInfo) {
+  return new Promise(function (resolve, reject) {
+    var requestAbort = true;
+    var requestData = {
+      url: requestInfo.url,
+      header: requestInfo.header,
+      //加入请求头
+      success: function success(res) {
+        requestAbort = false;
+        resolve(res);
+      },
+      fail: function fail(err) {
+        requestAbort = false;
+        if (err.errMsg == "request:fail abort") {
+          reject({
+            errMsg: "请求超时，请重新尝试",
+            statusCode: 0
+          });
+        } else {
+          reject(err);
+        }
+      }
+    };
+    //请求类型
+    if (requestInfo.method) {
+      requestData.method = requestInfo.method;
+    }
+    if (requestInfo.data) {
+      requestData.data = requestInfo.data;
+    }
+    if (requestInfo.timeout) {
+      requestData.timeout = requestInfo.timeout;
+    }
+    if (requestInfo.dataType) {
+      requestData.dataType = requestInfo.dataType;
+    }
+    if (requestInfo.responseType) {
+      requestData.responseType = requestInfo.responseType;
+    }
+    var requestTask = uni.request(requestData);
+    setTimeout(function () {
+      if (requestAbort) {
+        requestTask.abort();
+      }
+    }, requestInfo.timeout);
+  });
+};
+// jsonp请求
+exports.dispatchRequest = dispatchRequest;
+var jsonpRequest = function jsonpRequest(requestInfo) {
+  return new Promise(function (resolve, reject) {
+    var dataStr = '';
+    Object.keys(requestInfo.data).forEach(function (key) {
+      dataStr += key + '=' + requestInfo.data[key] + '&';
+    });
+    //匹配最后一个&并去除
+    if (dataStr !== '') {
+      dataStr = dataStr.substr(0, dataStr.lastIndexOf('&'));
+    }
+    requestInfo.url = requestInfo.url + '?' + dataStr;
+    var callbackName = "callback" + Math.ceil(Math.random() * 1000000);
+  });
+};
+exports.jsonpRequest = jsonpRequest;
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
+
+/***/ }),
+/* 168 */
+/*!********************************************************************!*\
+  !*** D:/GitHub/Scheduling/zhouWei-request/request/upload/utils.js ***!
+  \********************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(uni) {
+
+var _interopRequireDefault = __webpack_require__(/*! @babel/runtime/helpers/interopRequireDefault */ 4);
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.urlUpload = exports.randomChar = exports.qiniuUpload = exports.chooseVideo = exports.chooseImage = void 0;
+var _defineProperty2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/defineProperty */ 11));
+function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); enumerableOnly && (symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; })), keys.push.apply(keys, symbols); } return keys; }
+function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = null != arguments[i] ? arguments[i] : {}; i % 2 ? ownKeys(Object(source), !0).forEach(function (key) { (0, _defineProperty2.default)(target, key, source[key]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)) : ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } return target; }
+var qiniuUploader = __webpack_require__(/*! ./qiniuUploader */ 169);
+//七牛云上传文件命名
+var randomChar = function randomChar(l) {
+  var url = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : "";
+  var x = "0123456789qwertyuioplkjhgfdsazxcvbnm";
+  var tmp = "";
+  var time = new Date();
+  for (var i = 0; i < l; i++) {
+    tmp += x.charAt(Math.ceil(Math.random() * 100000000) % x.length);
+  }
+  return "file/" + url + time.getTime() + tmp;
+};
+//图片选择
+exports.randomChar = randomChar;
+var chooseImage = function chooseImage(data) {
+  return new Promise(function (resolve, reject) {
+    uni.chooseImage({
+      count: data.count || 9,
+      //默认9
+      sizeType: data.sizeType || ['original', 'compressed'],
+      //可以指定是原图还是压缩图，默认二者都有
+      sourceType: data.sourceType || ['album', 'camera'],
+      //从相册选择
+      success: function success(res) {
+        resolve(res.tempFiles);
+      },
+      fail: function fail(err) {
+        reject({
+          errMsg: err.errMsg,
+          errCode: err.errCode,
+          statusCode: 0
+        });
+      }
+    });
+  });
+};
+//视频选择
+exports.chooseImage = chooseImage;
+var chooseVideo = function chooseVideo(data) {
+  return new Promise(function (resolve, reject) {
+    uni.chooseVideo({
+      sourceType: data.sourceType || ['album', 'camera'],
+      //从相册选择
+      compressed: data.compressed || false,
+      //是否压缩所选的视频源文件，默认值为 true，需要压缩。
+      maxDuration: data.maxDuration || 60,
+      //拍摄视频最长拍摄时间，单位秒。最长支持 60 秒。
+      camera: data.camera || 'back',
+      //'front'、'back'，默认'back'
+      success: function success(res) {
+        var files = [{
+          path: res.tempFilePath
+        }];
+        files[0].duration = res.duration;
+        files[0].size = res.size;
+        files[0].height = res.height;
+        files[0].width = res.width;
+        resolve(files);
+      },
+      fail: function fail(err) {
+        reject({
+          errMsg: err.errMsg,
+          errCode: err.errCode,
+          statusCode: 0
+        });
+      }
+    });
+  });
+};
+// 七牛云上传
+exports.chooseVideo = chooseVideo;
+var qiniuUpload = function qiniuUpload(requestInfo, getQnToken) {
+  return new Promise(function (resolve, reject) {
+    if (Array.isArray(requestInfo.files)) {
+      var len = requestInfo.files.length;
+      var fileList = new Array();
+      if (getQnToken) {
+        getQnToken(function (qnRes) {
+          /*
+           *接口返回参数：
+           *visitPrefix:访问文件的域名
+           *token:七牛云上传token
+           *folderPath:上传的文件夹
+           *region: 地区 默认为：SCN
+           */
+          var prefixLen = qnRes.visitPrefix.length;
+          if (qnRes.visitPrefix.charAt(prefixLen - 1) == '/') {
+            qnRes.visitPrefix = qnRes.visitPrefix.substring(0, prefixLen - 1);
+          }
+          uploadFile(0);
+          function uploadFile(i) {
+            var item = requestInfo.files[i];
+            var updateUrl = randomChar(10, qnRes.folderPath);
+            var fileData = _objectSpread({
+              fileIndex: i,
+              files: requestInfo.files
+            }, item);
+            if (item.name) {
+              fileData.name = item.name;
+              var nameArr = item.name.split(".");
+              updateUrl += "." + nameArr[nameArr.length - 1];
+            }
+            // 交给七牛上传
+            qiniuUploader.upload(item.path || item, function (res) {
+              fileData.url = res.imageURL;
+              requestInfo.onEachUpdate && requestInfo.onEachUpdate(_objectSpread({
+                url: res.imageURL
+              }, fileData));
+              fileList.push(res.imageURL);
+              if (len - 1 > i) {
+                uploadFile(i + 1);
+              } else {
+                resolve(fileList);
+              }
+            }, function (error) {
+              reject(error);
+            }, {
+              region: qnRes.region || 'SCN',
+              //地区
+              domain: qnRes.visitPrefix,
+              // bucket 域名，下载资源时用到。
+              key: updateUrl,
+              uptoken: qnRes.token,
+              // 由其他程序生成七牛 uptoken
+              uptokenURL: 'UpTokenURL.com/uptoken' // 上传地址
+            }, function (res) {
+              console.log(requestInfo);
+              requestInfo.onProgressUpdate && requestInfo.onProgressUpdate(Object.assign({}, fileData, res));
+              // console.log('上传进度', res.progress)
+              // console.log('已经上传的数据长度', res.totalBytesSent)
+              // console.log('预期需要上传的数据总长度', res.totalBytesExpectedToSend)
+            });
+          }
+        });
+      } else {
+        reject({
+          errMsg: "请添加七牛云回调方法：getQnToken",
+          statusCode: 0
+        });
+      }
+    } else {
+      reject({
+        errMsg: "files 必须是数组类型",
+        statusCode: 0
+      });
+    }
+    ;
+  });
+};
+// 服务器URL上传
+exports.qiniuUpload = qiniuUpload;
+var urlUpload = function urlUpload(requestInfo, dataFactory) {
+  return new Promise(function (resolve, reject) {
+    // 本地文件上传去掉默认Content-Type
+    if (requestInfo.header['Content-Type']) {
+      delete requestInfo.header['Content-Type'];
+    }
+    // 本地文件上传去掉默认Content-Type
+    if (requestInfo.header['content-type']) {
+      delete requestInfo.header['content-type'];
+    }
+    if (Array.isArray(requestInfo.files)) {
+      var fileUpload = function fileUpload(i) {
+        var item = requestInfo.files[i];
+        var fileData = _objectSpread({
+          fileIndex: i,
+          files: requestInfo.files
+        }, item);
+        var config = {
+          url: requestInfo.url,
+          filePath: item.path,
+          header: requestInfo.header,
+          //加入请求头
+          name: requestInfo.name || "file",
+          success: function success(response) {
+            //是否用外部的数据处理方法
+            if (requestInfo.isFactory && dataFactory) {
+              //数据处理
+              dataFactory(_objectSpread(_objectSpread({}, requestInfo), {}, {
+                response: response
+              })).then(function (data) {
+                fileList.push(data);
+                requestInfo.onEachUpdate && requestInfo.onEachUpdate(_objectSpread({
+                  data: data
+                }, fileData));
+                if (len <= i) {
+                  resolve(fileList);
+                } else {
+                  fileUpload(i + 1);
+                }
+              }, function (err) {
+                reject(err);
+              });
+            } else {
+              requestInfo.onEachUpdate && requestInfo.onEachUpdate(_objectSpread({
+                data: response
+              }, fileData));
+              fileList.push(response);
+              if (len <= i) {
+                resolve(fileList);
+              } else {
+                fileUpload(i + 1);
+              }
+            }
+          },
+          fail: function fail(err) {
+            reject(err);
+          }
+        };
+        if (requestInfo.data) {
+          config.formData = requestInfo.data;
+        }
+        var uploadTask = uni.uploadFile(config);
+        uploadTask.onProgressUpdate(function (res) {
+          requestInfo.onProgressUpdate && requestInfo.onProgressUpdate(Object.assign({}, fileData, res));
+        });
+      };
+      var len = requestInfo.files.length - 1;
+      var fileList = new Array();
+      fileUpload(0);
+    } else {
+      reject({
+        errMsg: "files 必须是数组类型",
+        statusCode: 0
+      });
+    }
+  });
+};
+exports.urlUpload = urlUpload;
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
+
+/***/ }),
+/* 169 */
+/*!****************************************************************************!*\
+  !*** D:/GitHub/Scheduling/zhouWei-request/request/upload/qiniuUploader.js ***!
+  \****************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* WEBPACK VAR INJECTION */(function(wx) {// created by gpake
+(function () {
+  var config = {
+    qiniuRegion: '',
+    qiniuImageURLPrefix: '',
+    qiniuUploadToken: '',
+    qiniuUploadTokenURL: '',
+    qiniuUploadTokenFunction: null,
+    qiniuShouldUseQiniuFileName: false
+  };
+  module.exports = {
+    init: init,
+    upload: upload
+  };
+
+  // 在整个程序生命周期中，只需要 init 一次即可
+  // 如果需要变更参数，再调用 init 即可
+  function init(options) {
+    config = {
+      qiniuRegion: '',
+      qiniuImageURLPrefix: '',
+      qiniuUploadToken: '',
+      qiniuUploadTokenURL: '',
+      qiniuUploadTokenFunction: null,
+      qiniuShouldUseQiniuFileName: false
+    };
+    updateConfigWithOptions(options);
+  }
+  function updateConfigWithOptions(options) {
+    if (options.region) {
+      config.qiniuRegion = options.region;
+    } else {
+      console.error('qiniu uploader need your bucket region');
+    }
+    if (options.uptoken) {
+      config.qiniuUploadToken = options.uptoken;
+    } else if (options.uptokenURL) {
+      config.qiniuUploadTokenURL = options.uptokenURL;
+    } else if (options.uptokenFunc) {
+      config.qiniuUploadTokenFunction = options.uptokenFunc;
+    }
+    if (options.domain) {
+      config.qiniuImageURLPrefix = options.domain;
+    }
+    config.qiniuShouldUseQiniuFileName = options.shouldUseQiniuFileName;
+  }
+  function upload(filePath, success, fail, options, progress, cancelTask) {
+    if (null == filePath) {
+      console.error('qiniu uploader need filePath to upload');
+      return;
+    }
+    if (options) {
+      updateConfigWithOptions(options);
+    }
+    if (config.qiniuUploadToken) {
+      doUpload(filePath, success, fail, options, progress, cancelTask);
+    } else if (config.qiniuUploadTokenURL) {
+      getQiniuToken(function () {
+        doUpload(filePath, success, fail, options, progress, cancelTask);
+      });
+    } else if (config.qiniuUploadTokenFunction) {
+      config.qiniuUploadToken = config.qiniuUploadTokenFunction();
+      if (null == config.qiniuUploadToken && config.qiniuUploadToken.length > 0) {
+        console.error('qiniu UploadTokenFunction result is null, please check the return value');
+        return;
+      }
+      doUpload(filePath, success, fail, options, progress, cancelTask);
+    } else {
+      console.error('qiniu uploader need one of [uptoken, uptokenURL, uptokenFunc]');
+      return;
+    }
+  }
+  function doUpload(filePath, _success, _fail, options, progress, cancelTask) {
+    if (null == config.qiniuUploadToken && config.qiniuUploadToken.length > 0) {
+      console.error('qiniu UploadToken is null, please check the init config or networking');
+      return;
+    }
+    var url = uploadURLFromRegionCode(config.qiniuRegion);
+    var fileName = filePath.split('//')[1];
+    if (options && options.key) {
+      fileName = options.key;
+    }
+    var formData = {
+      'token': config.qiniuUploadToken
+    };
+    if (!config.qiniuShouldUseQiniuFileName) {
+      formData['key'] = fileName;
+    }
+    var uploadTask = wx.uploadFile({
+      url: url,
+      filePath: filePath,
+      name: 'file',
+      formData: formData,
+      success: function success(res) {
+        var dataString = res.data;
+        if (res.data.hasOwnProperty('type') && res.data.type === 'Buffer') {
+          dataString = String.fromCharCode.apply(null, res.data.data);
+        }
+        try {
+          var dataObject = JSON.parse(dataString);
+          //do something
+          var imageUrl = config.qiniuImageURLPrefix + '/' + dataObject.key;
+          dataObject.imageURL = imageUrl;
+          if (_success) {
+            _success(dataObject);
+          }
+        } catch (e) {
+          console.log('parse JSON failed, origin String is: ' + dataString);
+          if (_fail) {
+            _fail(e);
+          }
+        }
+      },
+      fail: function fail(error) {
+        console.error(error);
+        if (_fail) {
+          _fail(error);
+        }
+      }
+    });
+    uploadTask.onProgressUpdate(function (res) {
+      progress && progress(res);
+    });
+    cancelTask && cancelTask(function () {
+      uploadTask.abort();
+    });
+  }
+  function getQiniuToken(callback) {
+    wx.request({
+      url: config.qiniuUploadTokenURL,
+      success: function success(res) {
+        var token = res.data.uptoken;
+        if (token && token.length > 0) {
+          config.qiniuUploadToken = token;
+          if (callback) {
+            callback();
+          }
+        } else {
+          console.error('qiniuUploader cannot get your token, please check the uptokenURL or server');
+        }
+      },
+      fail: function fail(error) {
+        console.error('qiniu UploadToken is null, please check the init config or networking: ' + error);
+      }
+    });
+  }
+  function uploadURLFromRegionCode(code) {
+    var uploadURL = null;
+    switch (code) {
+      case 'ECN':
+        uploadURL = 'https://up.qbox.me';
+        break;
+      case 'NCN':
+        uploadURL = 'https://up-z1.qbox.me';
+        break;
+      case 'SCN':
+        uploadURL = 'https://up-z2.qbox.me';
+        break;
+      case 'NA':
+        uploadURL = 'https://up-na0.qbox.me';
+        break;
+      case 'ASG':
+        uploadURL = 'https://up-as0.qbox.me';
+        break;
+      default:
+        console.error('please make the region is with one of [ECN, SCN, NCN, NA, ASG]');
+    }
+    return uploadURL;
+  }
+})();
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/wx.js */ 1)["default"]))
+
+/***/ }),
 /* 170 */,
 /* 171 */,
 /* 172 */,
@@ -19265,7 +20784,18 @@ exports.default = _default;
 /* 207 */,
 /* 208 */,
 /* 209 */,
-/* 210 */
+/* 210 */,
+/* 211 */,
+/* 212 */,
+/* 213 */,
+/* 214 */,
+/* 215 */,
+/* 216 */,
+/* 217 */,
+/* 218 */,
+/* 219 */,
+/* 220 */,
+/* 221 */
 /*!*****************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-modal/props.js ***!
   \*****************************************************************************/
@@ -19367,120 +20897,8 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
-/* 211 */,
-/* 212 */,
-/* 213 */,
-/* 214 */,
-/* 215 */,
-/* 216 */,
-/* 217 */,
-/* 218 */,
-/* 219 */,
-/* 220 */,
-/* 221 */,
 /* 222 */,
-/* 223 */
-/*!***********************************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-radio-group/props.js ***!
-  \***********************************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* WEBPACK VAR INJECTION */(function(uni) {
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-var _default = {
-  props: {
-    // 绑定的值
-    value: {
-      type: [String, Number, Boolean],
-      default: uni.$u.props.radioGroup.value
-    },
-    // 是否禁用全部radio
-    disabled: {
-      type: Boolean,
-      default: uni.$u.props.radioGroup.disabled
-    },
-    // 形状，circle-圆形，square-方形
-    shape: {
-      type: String,
-      default: uni.$u.props.radioGroup.shape
-    },
-    // 选中状态下的颜色，如设置此值，将会覆盖parent的activeColor值
-    activeColor: {
-      type: String,
-      default: uni.$u.props.radioGroup.activeColor
-    },
-    // 未选中的颜色
-    inactiveColor: {
-      type: String,
-      default: uni.$u.props.radioGroup.inactiveColor
-    },
-    // 标识符
-    name: {
-      type: String,
-      default: uni.$u.props.radioGroup.name
-    },
-    // 整个组件的尺寸，默认px
-    size: {
-      type: [String, Number],
-      default: uni.$u.props.radioGroup.size
-    },
-    // 布局方式，row-横向，column-纵向
-    placement: {
-      type: String,
-      default: uni.$u.props.radioGroup.placement
-    },
-    // label的文本
-    label: {
-      type: [String],
-      default: uni.$u.props.radioGroup.label
-    },
-    // label的颜色 （默认 '#303133' ）
-    labelColor: {
-      type: [String],
-      default: uni.$u.props.radioGroup.labelColor
-    },
-    // label的字体大小，px单位
-    labelSize: {
-      type: [String, Number],
-      default: uni.$u.props.radioGroup.labelSize
-    },
-    // 是否禁止点击文本操作checkbox(默认 false )
-    labelDisabled: {
-      type: Boolean,
-      default: uni.$u.props.radioGroup.labelDisabled
-    },
-    // 图标颜色
-    iconColor: {
-      type: String,
-      default: uni.$u.props.radioGroup.iconColor
-    },
-    // 图标的大小，单位px
-    iconSize: {
-      type: [String, Number],
-      default: uni.$u.props.radioGroup.iconSize
-    },
-    // 竖向配列时，是否显示下划线
-    borderBottom: {
-      type: Boolean,
-      default: uni.$u.props.radioGroup.borderBottom
-    },
-    // 图标与文字的对齐方式
-    iconPlacement: {
-      type: String,
-      default: uni.$u.props.radio.iconPlacement
-    }
-  }
-};
-exports.default = _default;
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
-
-/***/ }),
+/* 223 */,
 /* 224 */,
 /* 225 */,
 /* 226 */,
@@ -19488,96 +20906,10 @@ exports.default = _default;
 /* 228 */,
 /* 229 */,
 /* 230 */,
-/* 231 */
-/*!*****************************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-radio/props.js ***!
-  \*****************************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* WEBPACK VAR INJECTION */(function(uni) {
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-var _default = {
-  props: {
-    // radio的名称
-    name: {
-      type: [String, Number, Boolean],
-      default: uni.$u.props.radio.name
-    },
-    // 形状，square为方形，circle为圆型
-    shape: {
-      type: String,
-      default: uni.$u.props.radio.shape
-    },
-    // 是否禁用
-    disabled: {
-      type: [String, Boolean],
-      default: uni.$u.props.radio.disabled
-    },
-    // 是否禁止点击提示语选中单选框
-    labelDisabled: {
-      type: [String, Boolean],
-      default: uni.$u.props.radio.labelDisabled
-    },
-    // 选中状态下的颜色，如设置此值，将会覆盖parent的activeColor值
-    activeColor: {
-      type: String,
-      default: uni.$u.props.radio.activeColor
-    },
-    // 未选中的颜色
-    inactiveColor: {
-      type: String,
-      default: uni.$u.props.radio.inactiveColor
-    },
-    // 图标的大小，单位px
-    iconSize: {
-      type: [String, Number],
-      default: uni.$u.props.radio.iconSize
-    },
-    // label的字体大小，px单位
-    labelSize: {
-      type: [String, Number],
-      default: uni.$u.props.radio.labelSize
-    },
-    // label提示文字，因为nvue下，直接slot进来的文字，由于特殊的结构，无法修改样式
-    label: {
-      type: [String, Number],
-      default: uni.$u.props.radio.label
-    },
-    // 整体的大小
-    size: {
-      type: [String, Number],
-      default: uni.$u.props.radio.size
-    },
-    // 图标颜色
-    color: {
-      type: String,
-      default: uni.$u.props.radio.color
-    },
-    // label的颜色
-    labelColor: {
-      type: String,
-      default: uni.$u.props.radio.labelColor
-    }
-  }
-};
-exports.default = _default;
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
-
-/***/ }),
+/* 231 */,
 /* 232 */,
 /* 233 */,
-/* 234 */,
-/* 235 */,
-/* 236 */,
-/* 237 */,
-/* 238 */,
-/* 239 */
+/* 234 */
 /*!****************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-icon/icons.js ***!
   \****************************************************************************/
@@ -19808,7 +21140,7 @@ var _default = {
 exports.default = _default;
 
 /***/ }),
-/* 240 */
+/* 235 */
 /*!****************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-icon/props.js ***!
   \****************************************************************************/
@@ -19915,17 +21247,89 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
+/* 236 */,
+/* 237 */,
+/* 238 */,
+/* 239 */,
+/* 240 */,
 /* 241 */,
 /* 242 */,
-/* 243 */,
-/* 244 */,
-/* 245 */,
-/* 246 */,
-/* 247 */,
-/* 248 */
-/*!********************************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-textarea/props.js ***!
-  \********************************************************************************/
+/* 243 */
+/*!**********************************************************************!*\
+  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/libs/mixin/button.js ***!
+  \**********************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _default = {
+  props: {
+    lang: String,
+    sessionFrom: String,
+    sendMessageTitle: String,
+    sendMessagePath: String,
+    sendMessageImg: String,
+    showMessageCard: Boolean,
+    appParameter: String,
+    formType: String,
+    openType: String
+  }
+};
+exports.default = _default;
+
+/***/ }),
+/* 244 */
+/*!************************************************************************!*\
+  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/libs/mixin/openType.js ***!
+  \************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _default = {
+  props: {
+    openType: String
+  },
+  methods: {
+    onGetUserInfo: function onGetUserInfo(event) {
+      this.$emit('getuserinfo', event.detail);
+    },
+    onContact: function onContact(event) {
+      this.$emit('contact', event.detail);
+    },
+    onGetPhoneNumber: function onGetPhoneNumber(event) {
+      this.$emit('getphonenumber', event.detail);
+    },
+    onError: function onError(event) {
+      this.$emit('error', event.detail);
+    },
+    onLaunchApp: function onLaunchApp(event) {
+      this.$emit('launchapp', event.detail);
+    },
+    onOpenSetting: function onOpenSetting(event) {
+      this.$emit('opensetting', event.detail);
+    }
+  }
+};
+exports.default = _default;
+
+/***/ }),
+/* 245 */
+/*!******************************************************************************!*\
+  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-button/props.js ***!
+  \******************************************************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -19936,122 +21340,164 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.default = void 0;
+/*
+ * @Author       : LQ
+ * @Description  :
+ * @version      : 1.0
+ * @Date         : 2021-08-16 10:04:04
+ * @LastAuthor   : LQ
+ * @lastTime     : 2021-08-16 10:04:24
+ * @FilePath     : /u-view2.0/uview-ui/components/u-button/props.js
+ */
 var _default = {
   props: {
-    // 输入框的内容
-    value: {
-      type: [String, Number],
-      default: uni.$u.props.textarea.value
+    // 是否细边框
+    hairline: {
+      type: Boolean,
+      default: uni.$u.props.button.hairline
     },
-    // 输入框为空时占位符
-    placeholder: {
-      type: [String, Number],
-      default: uni.$u.props.textarea.placeholder
-    },
-    // 指定placeholder的样式类，注意页面或组件的style中写了scoped时，需要在类名前写/deep/
-    placeholderClass: {
+    // 按钮的预置样式，info，primary，error，warning，success
+    type: {
       type: String,
-      default: uni.$u.props.input.placeholderClass
+      default: uni.$u.props.button.type
     },
-    // 指定placeholder的样式
-    placeholderStyle: {
-      type: [String, Object],
-      default: uni.$u.props.input.placeholderStyle
-    },
-    // 输入框高度
-    height: {
-      type: [String, Number],
-      default: uni.$u.props.textarea.height
-    },
-    // 设置键盘右下角按钮的文字，仅微信小程序，App-vue和H5有效
-    confirmType: {
+    // 按钮尺寸，large，normal，small，mini
+    size: {
       type: String,
-      default: uni.$u.props.textarea.confirmType
+      default: uni.$u.props.button.size
     },
-    // 是否禁用
+    // 按钮形状，circle（两边为半圆），square（带圆角）
+    shape: {
+      type: String,
+      default: uni.$u.props.button.shape
+    },
+    // 按钮是否镂空
+    plain: {
+      type: Boolean,
+      default: uni.$u.props.button.plain
+    },
+    // 是否禁止状态
     disabled: {
       type: Boolean,
-      default: uni.$u.props.textarea.disabled
+      default: uni.$u.props.button.disabled
     },
-    // 是否显示统计字数
-    count: {
+    // 是否加载中
+    loading: {
       type: Boolean,
-      default: uni.$u.props.textarea.count
+      default: uni.$u.props.button.loading
     },
-    // 是否自动获取焦点，nvue不支持，H5取决于浏览器的实现
-    focus: {
-      type: Boolean,
-      default: uni.$u.props.textarea.focus
-    },
-    // 是否自动增加高度
-    autoHeight: {
-      type: Boolean,
-      default: uni.$u.props.textarea.autoHeight
-    },
-    // 如果textarea是在一个position:fixed的区域，需要显示指定属性fixed为true
-    fixed: {
-      type: Boolean,
-      default: uni.$u.props.textarea.fixed
-    },
-    // 指定光标与键盘的距离
-    cursorSpacing: {
-      type: Number,
-      default: uni.$u.props.textarea.cursorSpacing
-    },
-    // 指定focus时的光标位置
-    cursor: {
+    // 加载中提示文字
+    loadingText: {
       type: [String, Number],
-      default: uni.$u.props.textarea.cursor
+      default: uni.$u.props.button.loadingText
     },
-    // 是否显示键盘上方带有”完成“按钮那一栏，
-    showConfirmBar: {
-      type: Boolean,
-      default: uni.$u.props.textarea.showConfirmBar
-    },
-    // 光标起始位置，自动聚焦时有效，需与selection-end搭配使用
-    selectionStart: {
-      type: Number,
-      default: uni.$u.props.textarea.selectionStart
-    },
-    // 光标结束位置，自动聚焦时有效，需与selection-start搭配使用
-    selectionEnd: {
-      type: Number,
-      default: uni.$u.props.textarea.selectionEnd
-    },
-    // 键盘弹起时，是否自动上推页面
-    adjustPosition: {
-      type: Boolean,
-      default: uni.$u.props.textarea.adjustPosition
-    },
-    // 是否去掉 iOS 下的默认内边距，只微信小程序有效
-    disableDefaultPadding: {
-      type: Boolean,
-      default: uni.$u.props.textarea.disableDefaultPadding
-    },
-    // focus时，点击页面的时候不收起键盘，只微信小程序有效
-    holdKeyboard: {
-      type: Boolean,
-      default: uni.$u.props.textarea.holdKeyboard
-    },
-    // 最大输入长度，设置为 -1 的时候不限制最大长度
-    maxlength: {
-      type: [String, Number],
-      default: uni.$u.props.textarea.maxlength
-    },
-    // 边框类型，surround-四周边框，bottom-底部边框
-    border: {
+    // 加载状态图标类型
+    loadingMode: {
       type: String,
-      default: uni.$u.props.textarea.border
+      default: uni.$u.props.button.loadingMode
     },
-    // 用于处理或者过滤输入框内容的方法
-    formatter: {
-      type: [Function, null],
-      default: uni.$u.props.textarea.formatter
+    // 加载图标大小
+    loadingSize: {
+      type: [String, Number],
+      default: uni.$u.props.button.loadingSize
     },
-    // 是否忽略组件内对文本合成系统事件的处理
-    ignoreCompositionEvent: {
+    // 开放能力，具体请看uniapp稳定关于button组件部分说明
+    // https://uniapp.dcloud.io/component/button
+    openType: {
+      type: String,
+      default: uni.$u.props.button.openType
+    },
+    // 用于 <form> 组件，点击分别会触发 <form> 组件的 submit/reset 事件
+    // 取值为submit（提交表单），reset（重置表单）
+    formType: {
+      type: String,
+      default: uni.$u.props.button.formType
+    },
+    // 打开 APP 时，向 APP 传递的参数，open-type=launchApp时有效
+    // 只微信小程序、QQ小程序有效
+    appParameter: {
+      type: String,
+      default: uni.$u.props.button.appParameter
+    },
+    // 指定是否阻止本节点的祖先节点出现点击态，微信小程序有效
+    hoverStopPropagation: {
       type: Boolean,
-      default: true
+      default: uni.$u.props.button.hoverStopPropagation
+    },
+    // 指定返回用户信息的语言，zh_CN 简体中文，zh_TW 繁体中文，en 英文。只微信小程序有效
+    lang: {
+      type: String,
+      default: uni.$u.props.button.lang
+    },
+    // 会话来源，open-type="contact"时有效。只微信小程序有效
+    sessionFrom: {
+      type: String,
+      default: uni.$u.props.button.sessionFrom
+    },
+    // 会话内消息卡片标题，open-type="contact"时有效
+    // 默认当前标题，只微信小程序有效
+    sendMessageTitle: {
+      type: String,
+      default: uni.$u.props.button.sendMessageTitle
+    },
+    // 会话内消息卡片点击跳转小程序路径，open-type="contact"时有效
+    // 默认当前分享路径，只微信小程序有效
+    sendMessagePath: {
+      type: String,
+      default: uni.$u.props.button.sendMessagePath
+    },
+    // 会话内消息卡片图片，open-type="contact"时有效
+    // 默认当前页面截图，只微信小程序有效
+    sendMessageImg: {
+      type: String,
+      default: uni.$u.props.button.sendMessageImg
+    },
+    // 是否显示会话内消息卡片，设置此参数为 true，用户进入客服会话会在右下角显示"可能要发送的小程序"提示，
+    // 用户点击后可以快速发送小程序消息，open-type="contact"时有效
+    showMessageCard: {
+      type: Boolean,
+      default: uni.$u.props.button.showMessageCard
+    },
+    // 额外传参参数，用于小程序的data-xxx属性，通过target.dataset.name获取
+    dataName: {
+      type: String,
+      default: uni.$u.props.button.dataName
+    },
+    // 节流，一定时间内只能触发一次
+    throttleTime: {
+      type: [String, Number],
+      default: uni.$u.props.button.throttleTime
+    },
+    // 按住后多久出现点击态，单位毫秒
+    hoverStartTime: {
+      type: [String, Number],
+      default: uni.$u.props.button.hoverStartTime
+    },
+    // 手指松开后点击态保留时间，单位毫秒
+    hoverStayTime: {
+      type: [String, Number],
+      default: uni.$u.props.button.hoverStayTime
+    },
+    // 按钮文字，之所以通过props传入，是因为slot传入的话
+    // nvue中无法控制文字的样式
+    text: {
+      type: [String, Number],
+      default: uni.$u.props.button.text
+    },
+    // 按钮图标
+    icon: {
+      type: String,
+      default: uni.$u.props.button.icon
+    },
+    // 按钮图标
+    iconColor: {
+      type: String,
+      default: uni.$u.props.button.icon
+    },
+    // 按钮颜色，支持传入linear-gradient渐变色
+    color: {
+      type: String,
+      default: uni.$u.props.button.color
     }
   }
 };
@@ -20059,12 +21505,14 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
+/* 246 */,
+/* 247 */,
+/* 248 */,
 /* 249 */,
 /* 250 */,
 /* 251 */,
 /* 252 */,
-/* 253 */,
-/* 254 */
+/* 253 */
 /*!***************************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-datetime-picker/props.js ***!
   \***************************************************************************************/
@@ -20198,7 +21646,7 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
-/* 255 */
+/* 254 */
 /*!********************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/libs/util/dayjs.js ***!
   \********************************************************************/
@@ -20510,1159 +21958,14 @@ var __WEBPACK_AMD_DEFINE_FACTORY__, __WEBPACK_AMD_DEFINE_RESULT__;var _typeof = 
 });
 
 /***/ }),
+/* 255 */,
 /* 256 */,
 /* 257 */,
 /* 258 */,
 /* 259 */,
 /* 260 */,
 /* 261 */,
-/* 262 */,
-/* 263 */
-/*!******************************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-picker/props.js ***!
-  \******************************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* WEBPACK VAR INJECTION */(function(uni) {
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-var _default = {
-  props: {
-    // 是否展示picker弹窗
-    show: {
-      type: Boolean,
-      default: uni.$u.props.picker.show
-    },
-    // 是否展示顶部的操作栏
-    showToolbar: {
-      type: Boolean,
-      default: uni.$u.props.picker.showToolbar
-    },
-    // 顶部标题
-    title: {
-      type: String,
-      default: uni.$u.props.picker.title
-    },
-    // 对象数组，设置每一列的数据
-    columns: {
-      type: Array,
-      default: uni.$u.props.picker.columns
-    },
-    // 是否显示加载中状态
-    loading: {
-      type: Boolean,
-      default: uni.$u.props.picker.loading
-    },
-    // 各列中，单个选项的高度
-    itemHeight: {
-      type: [String, Number],
-      default: uni.$u.props.picker.itemHeight
-    },
-    // 取消按钮的文字
-    cancelText: {
-      type: String,
-      default: uni.$u.props.picker.cancelText
-    },
-    // 确认按钮的文字
-    confirmText: {
-      type: String,
-      default: uni.$u.props.picker.confirmText
-    },
-    // 取消按钮的颜色
-    cancelColor: {
-      type: String,
-      default: uni.$u.props.picker.cancelColor
-    },
-    // 确认按钮的颜色
-    confirmColor: {
-      type: String,
-      default: uni.$u.props.picker.confirmColor
-    },
-    // 每列中可见选项的数量
-    visibleItemCount: {
-      type: [String, Number],
-      default: uni.$u.props.picker.visibleItemCount
-    },
-    // 选项对象中，需要展示的属性键名
-    keyName: {
-      type: String,
-      default: uni.$u.props.picker.keyName
-    },
-    // 是否允许点击遮罩关闭选择器
-    closeOnClickOverlay: {
-      type: Boolean,
-      default: uni.$u.props.picker.closeOnClickOverlay
-    },
-    // 各列的默认索引
-    defaultIndex: {
-      type: Array,
-      default: uni.$u.props.picker.defaultIndex
-    },
-    // 是否在手指松开时立即触发 change 事件。若不开启则会在滚动动画结束后触发 change 事件，只在微信2.21.1及以上有效
-    immediateChange: {
-      type: Boolean,
-      default: uni.$u.props.picker.immediateChange
-    }
-  }
-};
-exports.default = _default;
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
-
-/***/ }),
-/* 264 */,
-/* 265 */,
-/* 266 */,
-/* 267 */,
-/* 268 */,
-/* 269 */,
-/* 270 */,
-/* 271 */
-/*!**********************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/libs/mixin/button.js ***!
-  \**********************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-var _default = {
-  props: {
-    lang: String,
-    sessionFrom: String,
-    sendMessageTitle: String,
-    sendMessagePath: String,
-    sendMessageImg: String,
-    showMessageCard: Boolean,
-    appParameter: String,
-    formType: String,
-    openType: String
-  }
-};
-exports.default = _default;
-
-/***/ }),
-/* 272 */
-/*!************************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/libs/mixin/openType.js ***!
-  \************************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-var _default = {
-  props: {
-    openType: String
-  },
-  methods: {
-    onGetUserInfo: function onGetUserInfo(event) {
-      this.$emit('getuserinfo', event.detail);
-    },
-    onContact: function onContact(event) {
-      this.$emit('contact', event.detail);
-    },
-    onGetPhoneNumber: function onGetPhoneNumber(event) {
-      this.$emit('getphonenumber', event.detail);
-    },
-    onError: function onError(event) {
-      this.$emit('error', event.detail);
-    },
-    onLaunchApp: function onLaunchApp(event) {
-      this.$emit('launchapp', event.detail);
-    },
-    onOpenSetting: function onOpenSetting(event) {
-      this.$emit('opensetting', event.detail);
-    }
-  }
-};
-exports.default = _default;
-
-/***/ }),
-/* 273 */
-/*!******************************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-button/props.js ***!
-  \******************************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* WEBPACK VAR INJECTION */(function(uni) {
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-/*
- * @Author       : LQ
- * @Description  :
- * @version      : 1.0
- * @Date         : 2021-08-16 10:04:04
- * @LastAuthor   : LQ
- * @lastTime     : 2021-08-16 10:04:24
- * @FilePath     : /u-view2.0/uview-ui/components/u-button/props.js
- */
-var _default = {
-  props: {
-    // 是否细边框
-    hairline: {
-      type: Boolean,
-      default: uni.$u.props.button.hairline
-    },
-    // 按钮的预置样式，info，primary，error，warning，success
-    type: {
-      type: String,
-      default: uni.$u.props.button.type
-    },
-    // 按钮尺寸，large，normal，small，mini
-    size: {
-      type: String,
-      default: uni.$u.props.button.size
-    },
-    // 按钮形状，circle（两边为半圆），square（带圆角）
-    shape: {
-      type: String,
-      default: uni.$u.props.button.shape
-    },
-    // 按钮是否镂空
-    plain: {
-      type: Boolean,
-      default: uni.$u.props.button.plain
-    },
-    // 是否禁止状态
-    disabled: {
-      type: Boolean,
-      default: uni.$u.props.button.disabled
-    },
-    // 是否加载中
-    loading: {
-      type: Boolean,
-      default: uni.$u.props.button.loading
-    },
-    // 加载中提示文字
-    loadingText: {
-      type: [String, Number],
-      default: uni.$u.props.button.loadingText
-    },
-    // 加载状态图标类型
-    loadingMode: {
-      type: String,
-      default: uni.$u.props.button.loadingMode
-    },
-    // 加载图标大小
-    loadingSize: {
-      type: [String, Number],
-      default: uni.$u.props.button.loadingSize
-    },
-    // 开放能力，具体请看uniapp稳定关于button组件部分说明
-    // https://uniapp.dcloud.io/component/button
-    openType: {
-      type: String,
-      default: uni.$u.props.button.openType
-    },
-    // 用于 <form> 组件，点击分别会触发 <form> 组件的 submit/reset 事件
-    // 取值为submit（提交表单），reset（重置表单）
-    formType: {
-      type: String,
-      default: uni.$u.props.button.formType
-    },
-    // 打开 APP 时，向 APP 传递的参数，open-type=launchApp时有效
-    // 只微信小程序、QQ小程序有效
-    appParameter: {
-      type: String,
-      default: uni.$u.props.button.appParameter
-    },
-    // 指定是否阻止本节点的祖先节点出现点击态，微信小程序有效
-    hoverStopPropagation: {
-      type: Boolean,
-      default: uni.$u.props.button.hoverStopPropagation
-    },
-    // 指定返回用户信息的语言，zh_CN 简体中文，zh_TW 繁体中文，en 英文。只微信小程序有效
-    lang: {
-      type: String,
-      default: uni.$u.props.button.lang
-    },
-    // 会话来源，open-type="contact"时有效。只微信小程序有效
-    sessionFrom: {
-      type: String,
-      default: uni.$u.props.button.sessionFrom
-    },
-    // 会话内消息卡片标题，open-type="contact"时有效
-    // 默认当前标题，只微信小程序有效
-    sendMessageTitle: {
-      type: String,
-      default: uni.$u.props.button.sendMessageTitle
-    },
-    // 会话内消息卡片点击跳转小程序路径，open-type="contact"时有效
-    // 默认当前分享路径，只微信小程序有效
-    sendMessagePath: {
-      type: String,
-      default: uni.$u.props.button.sendMessagePath
-    },
-    // 会话内消息卡片图片，open-type="contact"时有效
-    // 默认当前页面截图，只微信小程序有效
-    sendMessageImg: {
-      type: String,
-      default: uni.$u.props.button.sendMessageImg
-    },
-    // 是否显示会话内消息卡片，设置此参数为 true，用户进入客服会话会在右下角显示"可能要发送的小程序"提示，
-    // 用户点击后可以快速发送小程序消息，open-type="contact"时有效
-    showMessageCard: {
-      type: Boolean,
-      default: uni.$u.props.button.showMessageCard
-    },
-    // 额外传参参数，用于小程序的data-xxx属性，通过target.dataset.name获取
-    dataName: {
-      type: String,
-      default: uni.$u.props.button.dataName
-    },
-    // 节流，一定时间内只能触发一次
-    throttleTime: {
-      type: [String, Number],
-      default: uni.$u.props.button.throttleTime
-    },
-    // 按住后多久出现点击态，单位毫秒
-    hoverStartTime: {
-      type: [String, Number],
-      default: uni.$u.props.button.hoverStartTime
-    },
-    // 手指松开后点击态保留时间，单位毫秒
-    hoverStayTime: {
-      type: [String, Number],
-      default: uni.$u.props.button.hoverStayTime
-    },
-    // 按钮文字，之所以通过props传入，是因为slot传入的话
-    // nvue中无法控制文字的样式
-    text: {
-      type: [String, Number],
-      default: uni.$u.props.button.text
-    },
-    // 按钮图标
-    icon: {
-      type: String,
-      default: uni.$u.props.button.icon
-    },
-    // 按钮图标
-    iconColor: {
-      type: String,
-      default: uni.$u.props.button.icon
-    },
-    // 按钮颜色，支持传入linear-gradient渐变色
-    color: {
-      type: String,
-      default: uni.$u.props.button.color
-    }
-  }
-};
-exports.default = _default;
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
-
-/***/ }),
-/* 274 */,
-/* 275 */,
-/* 276 */,
-/* 277 */,
-/* 278 */,
-/* 279 */,
-/* 280 */,
-/* 281 */
-/*!********************************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-calendar/props.js ***!
-  \********************************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* WEBPACK VAR INJECTION */(function(uni) {
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-var _default = {
-  props: {
-    // 日历顶部标题
-    title: {
-      type: String,
-      default: uni.$u.props.calendar.title
-    },
-    // 是否显示标题
-    showTitle: {
-      type: Boolean,
-      default: uni.$u.props.calendar.showTitle
-    },
-    // 是否显示副标题
-    showSubtitle: {
-      type: Boolean,
-      default: uni.$u.props.calendar.showSubtitle
-    },
-    // 日期类型选择，single-选择单个日期，multiple-可以选择多个日期，range-选择日期范围
-    mode: {
-      type: String,
-      default: uni.$u.props.calendar.mode
-    },
-    // mode=range时，第一个日期底部的提示文字
-    startText: {
-      type: String,
-      default: uni.$u.props.calendar.startText
-    },
-    // mode=range时，最后一个日期底部的提示文字
-    endText: {
-      type: String,
-      default: uni.$u.props.calendar.endText
-    },
-    // 自定义列表
-    customList: {
-      type: Array,
-      default: uni.$u.props.calendar.customList
-    },
-    // 主题色，对底部按钮和选中日期有效
-    color: {
-      type: String,
-      default: uni.$u.props.calendar.color
-    },
-    // 最小的可选日期
-    minDate: {
-      type: [String, Number],
-      default: uni.$u.props.calendar.minDate
-    },
-    // 最大可选日期
-    maxDate: {
-      type: [String, Number],
-      default: uni.$u.props.calendar.maxDate
-    },
-    // 默认选中的日期，mode为multiple或range是必须为数组格式
-    defaultDate: {
-      type: [Array, String, Date, null],
-      default: uni.$u.props.calendar.defaultDate
-    },
-    // mode=multiple时，最多可选多少个日期
-    maxCount: {
-      type: [String, Number],
-      default: uni.$u.props.calendar.maxCount
-    },
-    // 日期行高
-    rowHeight: {
-      type: [String, Number],
-      default: uni.$u.props.calendar.rowHeight
-    },
-    // 日期格式化函数
-    formatter: {
-      type: [Function, null],
-      default: uni.$u.props.calendar.formatter
-    },
-    // 是否显示农历
-    showLunar: {
-      type: Boolean,
-      default: uni.$u.props.calendar.showLunar
-    },
-    // 是否显示月份背景色
-    showMark: {
-      type: Boolean,
-      default: uni.$u.props.calendar.showMark
-    },
-    // 确定按钮的文字
-    confirmText: {
-      type: String,
-      default: uni.$u.props.calendar.confirmText
-    },
-    // 确认按钮处于禁用状态时的文字
-    confirmDisabledText: {
-      type: String,
-      default: uni.$u.props.calendar.confirmDisabledText
-    },
-    // 是否显示日历弹窗
-    show: {
-      type: Boolean,
-      default: uni.$u.props.calendar.show
-    },
-    // 是否允许点击遮罩关闭日历
-    closeOnClickOverlay: {
-      type: Boolean,
-      default: uni.$u.props.calendar.closeOnClickOverlay
-    },
-    // 是否为只读状态，只读状态下禁止选择日期
-    readonly: {
-      type: Boolean,
-      default: uni.$u.props.calendar.readonly
-    },
-    // 	是否展示确认按钮
-    showConfirm: {
-      type: Boolean,
-      default: uni.$u.props.calendar.showConfirm
-    },
-    // 日期区间最多可选天数，默认无限制，mode = range时有效
-    maxRange: {
-      type: [Number, String],
-      default: uni.$u.props.calendar.maxRange
-    },
-    // 范围选择超过最多可选天数时的提示文案，mode = range时有效
-    rangePrompt: {
-      type: String,
-      default: uni.$u.props.calendar.rangePrompt
-    },
-    // 范围选择超过最多可选天数时，是否展示提示文案，mode = range时有效
-    showRangePrompt: {
-      type: Boolean,
-      default: uni.$u.props.calendar.showRangePrompt
-    },
-    // 是否允许日期范围的起止时间为同一天，mode = range时有效
-    allowSameDay: {
-      type: Boolean,
-      default: uni.$u.props.calendar.allowSameDay
-    },
-    // 圆角值
-    round: {
-      type: [Boolean, String, Number],
-      default: uni.$u.props.calendar.round
-    },
-    // 最多展示月份数量
-    monthNum: {
-      type: [Number, String],
-      default: 3
-    }
-  }
-};
-exports.default = _default;
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
-
-/***/ }),
-/* 282 */
-/*!*******************************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-calendar/util.js ***!
-  \*******************************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-var _interopRequireDefault = __webpack_require__(/*! @babel/runtime/helpers/interopRequireDefault */ 4);
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-var _defineProperty2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/defineProperty */ 11));
-var _toConsumableArray2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/toConsumableArray */ 18));
-function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); enumerableOnly && (symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; })), keys.push.apply(keys, symbols); } return keys; }
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = null != arguments[i] ? arguments[i] : {}; i % 2 ? ownKeys(Object(source), !0).forEach(function (key) { (0, _defineProperty2.default)(target, key, source[key]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)) : ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } return target; }
-var _default = {
-  methods: {
-    // 设置月份数据
-    setMonth: function setMonth() {
-      var _this = this;
-      // 月初是周几
-      var day = dayjs(this.date).date(1).day();
-      var start = day == 0 ? 6 : day - 1;
-
-      // 本月天数
-      var days = dayjs(this.date).endOf('month').format('D');
-
-      // 上个月天数
-      var prevDays = dayjs(this.date).endOf('month').subtract(1, 'month').format('D');
-
-      // 日期数据
-      var arr = [];
-      // 清空表格
-      this.month = [];
-
-      // 添加上月数据
-      arr.push.apply(arr, (0, _toConsumableArray2.default)(new Array(start).fill(1).map(function (e, i) {
-        var day = prevDays - start + i + 1;
-        return {
-          value: day,
-          disabled: true,
-          date: dayjs(_this.date).subtract(1, 'month').date(day).format('YYYY-MM-DD')
-        };
-      })));
-
-      // 添加本月数据
-      arr.push.apply(arr, (0, _toConsumableArray2.default)(new Array(days - 0).fill(1).map(function (e, i) {
-        var day = i + 1;
-        return {
-          value: day,
-          date: dayjs(_this.date).date(day).format('YYYY-MM-DD')
-        };
-      })));
-
-      // 添加下个月
-      arr.push.apply(arr, (0, _toConsumableArray2.default)(new Array(42 - days - start).fill(1).map(function (e, i) {
-        var day = i + 1;
-        return {
-          value: day,
-          disabled: true,
-          date: dayjs(_this.date).add(1, 'month').date(day).format('YYYY-MM-DD')
-        };
-      })));
-
-      // 分割数组
-      var _loop = function _loop(n) {
-        _this.month.push(arr.slice(n, n + 7).map(function (e, i) {
-          e.index = i + n;
-
-          // 自定义信息
-          var custom = _this.customList.find(function (c) {
-            return c.date == e.date;
-          });
-
-          // 农历
-          if (_this.lunar) {
-            var _this$getLunar = _this.getLunar(e.date),
-              IDayCn = _this$getLunar.IDayCn,
-              IMonthCn = _this$getLunar.IMonthCn;
-            e.lunar = IDayCn == '初一' ? IMonthCn : IDayCn;
-          }
-          return _objectSpread(_objectSpread({}, e), custom);
-        }));
-      };
-      for (var n = 0; n < arr.length; n += 7) {
-        _loop(n);
-      }
-    }
-  }
-};
-exports.default = _default;
-
-/***/ }),
-/* 283 */
-/*!***********************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/libs/util/calendar.js ***!
-  \***********************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-/**
-* @1900-2100区间内的公历、农历互转
-* @charset UTF-8
-* @github  https://github.com/jjonline/calendar.js
-* @Author  Jea杨(JJonline@JJonline.Cn)
-* @Time    2014-7-21
-* @Time    2016-8-13 Fixed 2033hex、Attribution Annals
-* @Time    2016-9-25 Fixed lunar LeapMonth Param Bug
-* @Time    2017-7-24 Fixed use getTerm Func Param Error.use solar year,NOT lunar year
-* @Version 1.0.3
-* @公历转农历：calendar.solar2lunar(1987,11,01); //[you can ignore params of prefix 0]
-* @农历转公历：calendar.lunar2solar(1987,09,10); //[you can ignore params of prefix 0]
-*/
-/* eslint-disable */
-var calendar = {
-  /**
-      * 农历1900-2100的润大小信息表
-      * @Array Of Property
-      * @return Hex
-      */
-  lunarInfo: [0x04bd8, 0x04ae0, 0x0a570, 0x054d5, 0x0d260, 0x0d950, 0x16554, 0x056a0, 0x09ad0, 0x055d2,
-  // 1900-1909
-  0x04ae0, 0x0a5b6, 0x0a4d0, 0x0d250, 0x1d255, 0x0b540, 0x0d6a0, 0x0ada2, 0x095b0, 0x14977,
-  // 1910-1919
-  0x04970, 0x0a4b0, 0x0b4b5, 0x06a50, 0x06d40, 0x1ab54, 0x02b60, 0x09570, 0x052f2, 0x04970,
-  // 1920-1929
-  0x06566, 0x0d4a0, 0x0ea50, 0x06e95, 0x05ad0, 0x02b60, 0x186e3, 0x092e0, 0x1c8d7, 0x0c950,
-  // 1930-1939
-  0x0d4a0, 0x1d8a6, 0x0b550, 0x056a0, 0x1a5b4, 0x025d0, 0x092d0, 0x0d2b2, 0x0a950, 0x0b557,
-  // 1940-1949
-  0x06ca0, 0x0b550, 0x15355, 0x04da0, 0x0a5b0, 0x14573, 0x052b0, 0x0a9a8, 0x0e950, 0x06aa0,
-  // 1950-1959
-  0x0aea6, 0x0ab50, 0x04b60, 0x0aae4, 0x0a570, 0x05260, 0x0f263, 0x0d950, 0x05b57, 0x056a0,
-  // 1960-1969
-  0x096d0, 0x04dd5, 0x04ad0, 0x0a4d0, 0x0d4d4, 0x0d250, 0x0d558, 0x0b540, 0x0b6a0, 0x195a6,
-  // 1970-1979
-  0x095b0, 0x049b0, 0x0a974, 0x0a4b0, 0x0b27a, 0x06a50, 0x06d40, 0x0af46, 0x0ab60, 0x09570,
-  // 1980-1989
-  0x04af5, 0x04970, 0x064b0, 0x074a3, 0x0ea50, 0x06b58, 0x05ac0, 0x0ab60, 0x096d5, 0x092e0,
-  // 1990-1999
-  0x0c960, 0x0d954, 0x0d4a0, 0x0da50, 0x07552, 0x056a0, 0x0abb7, 0x025d0, 0x092d0, 0x0cab5,
-  // 2000-2009
-  0x0a950, 0x0b4a0, 0x0baa4, 0x0ad50, 0x055d9, 0x04ba0, 0x0a5b0, 0x15176, 0x052b0, 0x0a930,
-  // 2010-2019
-  0x07954, 0x06aa0, 0x0ad50, 0x05b52, 0x04b60, 0x0a6e6, 0x0a4e0, 0x0d260, 0x0ea65, 0x0d530,
-  // 2020-2029
-  0x05aa0, 0x076a3, 0x096d0, 0x04afb, 0x04ad0, 0x0a4d0, 0x1d0b6, 0x0d250, 0x0d520, 0x0dd45,
-  // 2030-2039
-  0x0b5a0, 0x056d0, 0x055b2, 0x049b0, 0x0a577, 0x0a4b0, 0x0aa50, 0x1b255, 0x06d20, 0x0ada0,
-  // 2040-2049
-  /** Add By JJonline@JJonline.Cn**/
-  0x14b63, 0x09370, 0x049f8, 0x04970, 0x064b0, 0x168a6, 0x0ea50, 0x06b20, 0x1a6c4, 0x0aae0,
-  // 2050-2059
-  0x0a2e0, 0x0d2e3, 0x0c960, 0x0d557, 0x0d4a0, 0x0da50, 0x05d55, 0x056a0, 0x0a6d0, 0x055d4,
-  // 2060-2069
-  0x052d0, 0x0a9b8, 0x0a950, 0x0b4a0, 0x0b6a6, 0x0ad50, 0x055a0, 0x0aba4, 0x0a5b0, 0x052b0,
-  // 2070-2079
-  0x0b273, 0x06930, 0x07337, 0x06aa0, 0x0ad50, 0x14b55, 0x04b60, 0x0a570, 0x054e4, 0x0d160,
-  // 2080-2089
-  0x0e968, 0x0d520, 0x0daa0, 0x16aa6, 0x056d0, 0x04ae0, 0x0a9d4, 0x0a2d0, 0x0d150, 0x0f252,
-  // 2090-2099
-  0x0d520],
-  // 2100
-
-  /**
-      * 公历每个月份的天数普通表
-      * @Array Of Property
-      * @return Number
-      */
-  solarMonth: [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
-  /**
-      * 天干地支之天干速查表
-      * @Array Of Property trans["甲","乙","丙","丁","戊","己","庚","辛","壬","癸"]
-      * @return Cn string
-      */
-  Gan: ["\u7532", "\u4E59", "\u4E19", "\u4E01", "\u620A", "\u5DF1", "\u5E9A", "\u8F9B", "\u58EC", "\u7678"],
-  /**
-      * 天干地支之地支速查表
-      * @Array Of Property
-      * @trans["子","丑","寅","卯","辰","巳","午","未","申","酉","戌","亥"]
-      * @return Cn string
-      */
-  Zhi: ["\u5B50", "\u4E11", "\u5BC5", "\u536F", "\u8FB0", "\u5DF3", "\u5348", "\u672A", "\u7533", "\u9149", "\u620C", "\u4EA5"],
-  /**
-      * 天干地支之地支速查表<=>生肖
-      * @Array Of Property
-      * @trans["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"]
-      * @return Cn string
-      */
-  Animals: ["\u9F20", "\u725B", "\u864E", "\u5154", "\u9F99", "\u86C7", "\u9A6C", "\u7F8A", "\u7334", "\u9E21", "\u72D7", "\u732A"],
-  /**
-      * 24节气速查表
-      * @Array Of Property
-      * @trans["小寒","大寒","立春","雨水","惊蛰","春分","清明","谷雨","立夏","小满","芒种","夏至","小暑","大暑","立秋","处暑","白露","秋分","寒露","霜降","立冬","小雪","大雪","冬至"]
-      * @return Cn string
-      */
-  solarTerm: ["\u5C0F\u5BD2", "\u5927\u5BD2", "\u7ACB\u6625", "\u96E8\u6C34", "\u60CA\u86F0", "\u6625\u5206", "\u6E05\u660E", "\u8C37\u96E8", "\u7ACB\u590F", "\u5C0F\u6EE1", "\u8292\u79CD", "\u590F\u81F3", "\u5C0F\u6691", "\u5927\u6691", "\u7ACB\u79CB", "\u5904\u6691", "\u767D\u9732", "\u79CB\u5206", "\u5BD2\u9732", "\u971C\u964D", "\u7ACB\u51AC", "\u5C0F\u96EA", "\u5927\u96EA", "\u51AC\u81F3"],
-  /**
-      * 1900-2100各年的24节气日期速查表
-      * @Array Of Property
-      * @return 0x string For splice
-      */
-  sTermInfo: ['9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf97c3598082c95f8c965cc920f', '97bd0b06bdb0722c965ce1cfcc920f', 'b027097bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf97c359801ec95f8c965cc920f', '97bd0b06bdb0722c965ce1cfcc920f', 'b027097bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf97c359801ec95f8c965cc920f', '97bd0b06bdb0722c965ce1cfcc920f', 'b027097bd097c36b0b6fc9274c91aa', '9778397bd19801ec9210c965cc920e', '97b6b97bd19801ec95f8c965cc920f', '97bd09801d98082c95f8e1cfcc920f', '97bd097bd097c36b0b6fc9210c8dc2', '9778397bd197c36c9210c9274c91aa', '97b6b97bd19801ec95f8c965cc920e', '97bd09801d98082c95f8e1cfcc920f', '97bd097bd097c36b0b6fc9210c8dc2', '9778397bd097c36c9210c9274c91aa', '97b6b97bd19801ec95f8c965cc920e', '97bcf97c3598082c95f8e1cfcc920f', '97bd097bd097c36b0b6fc9210c8dc2', '9778397bd097c36c9210c9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf97c3598082c95f8c965cc920f', '97bd097bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf97c3598082c95f8c965cc920f', '97bd097bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf97c359801ec95f8c965cc920f', '97bd097bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf97c359801ec95f8c965cc920f', '97bd097bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf97c359801ec95f8c965cc920f', '97bd097bd07f595b0b6fc920fb0722', '9778397bd097c36b0b6fc9210c8dc2', '9778397bd19801ec9210c9274c920e', '97b6b97bd19801ec95f8c965cc920f', '97bd07f5307f595b0b0bc920fb0722', '7f0e397bd097c36b0b6fc9210c8dc2', '9778397bd097c36c9210c9274c920e', '97b6b97bd19801ec95f8c965cc920f', '97bd07f5307f595b0b0bc920fb0722', '7f0e397bd097c36b0b6fc9210c8dc2', '9778397bd097c36c9210c9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bd07f1487f595b0b0bc920fb0722', '7f0e397bd097c36b0b6fc9210c8dc2', '9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf7f1487f595b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf7f1487f595b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf7f1487f531b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c965cc920e', '97bcf7f1487f531b0b0bb0b6fb0722', '7f0e397bd07f595b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b97bd19801ec9210c9274c920e', '97bcf7f0e47f531b0b0bb0b6fb0722', '7f0e397bd07f595b0b0bc920fb0722', '9778397bd097c36b0b6fc9210c91aa', '97b6b97bd197c36c9210c9274c920e', '97bcf7f0e47f531b0b0bb0b6fb0722', '7f0e397bd07f595b0b0bc920fb0722', '9778397bd097c36b0b6fc9210c8dc2', '9778397bd097c36c9210c9274c920e', '97b6b7f0e47f531b0723b0b6fb0722', '7f0e37f5307f595b0b0bc920fb0722', '7f0e397bd097c36b0b6fc9210c8dc2', '9778397bd097c36b0b70c9274c91aa', '97b6b7f0e47f531b0723b0b6fb0721', '7f0e37f1487f595b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc9210c8dc2', '9778397bd097c36b0b6fc9274c91aa', '97b6b7f0e47f531b0723b0b6fb0721', '7f0e27f1487f595b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e397bd07f595b0b0bc920fb0722', '9778397bd097c36b0b6fc9274c91aa', '97b6b7f0e47f531b0723b0787b0721', '7f0e27f0e47f531b0b0bb0b6fb0722', '7f0e397bd07f595b0b0bc920fb0722', '9778397bd097c36b0b6fc9210c91aa', '97b6b7f0e47f149b0723b0787b0721', '7f0e27f0e47f531b0723b0b6fb0722', '7f0e397bd07f595b0b0bc920fb0722', '9778397bd097c36b0b6fc9210c8dc2', '977837f0e37f149b0723b0787b0721', '7f07e7f0e47f531b0723b0b6fb0722', '7f0e37f5307f595b0b0bc920fb0722', '7f0e397bd097c35b0b6fc9210c8dc2', '977837f0e37f14998082b0787b0721', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e37f1487f595b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc9210c8dc2', '977837f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc920fb0722', '977837f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e397bd097c35b0b6fc920fb0722', '977837f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e397bd07f595b0b0bc920fb0722', '977837f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e397bd07f595b0b0bc920fb0722', '977837f0e37f14998082b0787b06bd', '7f07e7f0e47f149b0723b0787b0721', '7f0e27f0e47f531b0b0bb0b6fb0722', '7f0e397bd07f595b0b0bc920fb0722', '977837f0e37f14998082b0723b06bd', '7f07e7f0e37f149b0723b0787b0721', '7f0e27f0e47f531b0723b0b6fb0722', '7f0e397bd07f595b0b0bc920fb0722', '977837f0e37f14898082b0723b02d5', '7ec967f0e37f14998082b0787b0721', '7f07e7f0e47f531b0723b0b6fb0722', '7f0e37f1487f595b0b0bb0b6fb0722', '7f0e37f0e37f14898082b0723b02d5', '7ec967f0e37f14998082b0787b0721', '7f07e7f0e47f531b0723b0b6fb0722', '7f0e37f1487f531b0b0bb0b6fb0722', '7f0e37f0e37f14898082b0723b02d5', '7ec967f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e37f1487f531b0b0bb0b6fb0722', '7f0e37f0e37f14898082b072297c35', '7ec967f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e37f0e37f14898082b072297c35', '7ec967f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e37f0e366aa89801eb072297c35', '7ec967f0e37f14998082b0787b06bd', '7f07e7f0e47f149b0723b0787b0721', '7f0e27f1487f531b0b0bb0b6fb0722', '7f0e37f0e366aa89801eb072297c35', '7ec967f0e37f14998082b0723b06bd', '7f07e7f0e47f149b0723b0787b0721', '7f0e27f0e47f531b0723b0b6fb0722', '7f0e37f0e366aa89801eb072297c35', '7ec967f0e37f14998082b0723b06bd', '7f07e7f0e37f14998083b0787b0721', '7f0e27f0e47f531b0723b0b6fb0722', '7f0e37f0e366aa89801eb072297c35', '7ec967f0e37f14898082b0723b02d5', '7f07e7f0e37f14998082b0787b0721', '7f07e7f0e47f531b0723b0b6fb0722', '7f0e36665b66aa89801e9808297c35', '665f67f0e37f14898082b0723b02d5', '7ec967f0e37f14998082b0787b0721', '7f07e7f0e47f531b0723b0b6fb0722', '7f0e36665b66a449801e9808297c35', '665f67f0e37f14898082b0723b02d5', '7ec967f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e36665b66a449801e9808297c35', '665f67f0e37f14898082b072297c35', '7ec967f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e26665b66a449801e9808297c35', '665f67f0e37f1489801eb072297c35', '7ec967f0e37f14998082b0787b06bd', '7f07e7f0e47f531b0723b0b6fb0721', '7f0e27f1487f531b0b0bb0b6fb0722'],
-  /**
-      * 数字转中文速查表
-      * @Array Of Property
-      * @trans ['日','一','二','三','四','五','六','七','八','九','十']
-      * @return Cn string
-      */
-  nStr1: ["\u65E5", "\u4E00", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D", "\u5341"],
-  /**
-      * 日期转农历称呼速查表
-      * @Array Of Property
-      * @trans ['初','十','廿','卅']
-      * @return Cn string
-      */
-  nStr2: ["\u521D", "\u5341", "\u5EFF", "\u5345"],
-  /**
-      * 月份转农历称呼速查表
-      * @Array Of Property
-      * @trans ['正','一','二','三','四','五','六','七','八','九','十','冬','腊']
-      * @return Cn string
-      */
-  nStr3: ["\u6B63", "\u4E8C", "\u4E09", "\u56DB", "\u4E94", "\u516D", "\u4E03", "\u516B", "\u4E5D", "\u5341", "\u51AC", "\u814A"],
-  /**
-      * 返回农历y年一整年的总天数
-      * @param lunar Year
-      * @return Number
-      * @eg:var count = calendar.lYearDays(1987) ;//count=387
-      */
-  lYearDays: function lYearDays(y) {
-    var i;
-    var sum = 348;
-    for (i = 0x8000; i > 0x8; i >>= 1) {
-      sum += this.lunarInfo[y - 1900] & i ? 1 : 0;
-    }
-    return sum + this.leapDays(y);
-  },
-  /**
-      * 返回农历y年闰月是哪个月；若y年没有闰月 则返回0
-      * @param lunar Year
-      * @return Number (0-12)
-      * @eg:var leapMonth = calendar.leapMonth(1987) ;//leapMonth=6
-      */
-  leapMonth: function leapMonth(y) {
-    // 闰字编码 \u95f0
-    return this.lunarInfo[y - 1900] & 0xf;
-  },
-  /**
-      * 返回农历y年闰月的天数 若该年没有闰月则返回0
-      * @param lunar Year
-      * @return Number (0、29、30)
-      * @eg:var leapMonthDay = calendar.leapDays(1987) ;//leapMonthDay=29
-      */
-  leapDays: function leapDays(y) {
-    if (this.leapMonth(y)) {
-      return this.lunarInfo[y - 1900] & 0x10000 ? 30 : 29;
-    }
-    return 0;
-  },
-  /**
-      * 返回农历y年m月（非闰月）的总天数，计算m为闰月时的天数请使用leapDays方法
-      * @param lunar Year
-      * @return Number (-1、29、30)
-      * @eg:var MonthDay = calendar.monthDays(1987,9) ;//MonthDay=29
-      */
-  monthDays: function monthDays(y, m) {
-    if (m > 12 || m < 1) {
-      return -1;
-    } // 月份参数从1至12，参数错误返回-1
-    return this.lunarInfo[y - 1900] & 0x10000 >> m ? 30 : 29;
-  },
-  /**
-      * 返回公历(!)y年m月的天数
-      * @param solar Year
-      * @return Number (-1、28、29、30、31)
-      * @eg:var solarMonthDay = calendar.leapDays(1987) ;//solarMonthDay=30
-      */
-  solarDays: function solarDays(y, m) {
-    if (m > 12 || m < 1) {
-      return -1;
-    } // 若参数错误 返回-1
-    var ms = m - 1;
-    if (ms == 1) {
-      // 2月份的闰平规律测算后确认返回28或29
-      return y % 4 == 0 && y % 100 != 0 || y % 400 == 0 ? 29 : 28;
-    } else {
-      return this.solarMonth[ms];
-    }
-  },
-  /**
-     * 农历年份转换为干支纪年
-     * @param  lYear 农历年的年份数
-     * @return Cn string
-     */
-  toGanZhiYear: function toGanZhiYear(lYear) {
-    var ganKey = (lYear - 3) % 10;
-    var zhiKey = (lYear - 3) % 12;
-    if (ganKey == 0) ganKey = 10; // 如果余数为0则为最后一个天干
-    if (zhiKey == 0) zhiKey = 12; // 如果余数为0则为最后一个地支
-    return this.Gan[ganKey - 1] + this.Zhi[zhiKey - 1];
-  },
-  /**
-     * 公历月、日判断所属星座
-     * @param  cMonth [description]
-     * @param  cDay [description]
-     * @return Cn string
-     */
-  toAstro: function toAstro(cMonth, cDay) {
-    var s = "\u9B54\u7FAF\u6C34\u74F6\u53CC\u9C7C\u767D\u7F8A\u91D1\u725B\u53CC\u5B50\u5DE8\u87F9\u72EE\u5B50\u5904\u5973\u5929\u79E4\u5929\u874E\u5C04\u624B\u9B54\u7FAF";
-    var arr = [20, 19, 21, 21, 21, 22, 23, 23, 23, 23, 22, 22];
-    return s.substr(cMonth * 2 - (cDay < arr[cMonth - 1] ? 2 : 0), 2) + "\u5EA7"; // 座
-  },
-
-  /**
-      * 传入offset偏移量返回干支
-      * @param offset 相对甲子的偏移量
-      * @return Cn string
-      */
-  toGanZhi: function toGanZhi(offset) {
-    return this.Gan[offset % 10] + this.Zhi[offset % 12];
-  },
-  /**
-      * 传入公历(!)y年获得该年第n个节气的公历日期
-      * @param y公历年(1900-2100)；n二十四节气中的第几个节气(1~24)；从n=1(小寒)算起
-      * @return day Number
-      * @eg:var _24 = calendar.getTerm(1987,3) ;//_24=4;意即1987年2月4日立春
-      */
-  getTerm: function getTerm(y, n) {
-    if (y < 1900 || y > 2100) {
-      return -1;
-    }
-    if (n < 1 || n > 24) {
-      return -1;
-    }
-    var _table = this.sTermInfo[y - 1900];
-    var _info = [parseInt('0x' + _table.substr(0, 5)).toString(), parseInt('0x' + _table.substr(5, 5)).toString(), parseInt('0x' + _table.substr(10, 5)).toString(), parseInt('0x' + _table.substr(15, 5)).toString(), parseInt('0x' + _table.substr(20, 5)).toString(), parseInt('0x' + _table.substr(25, 5)).toString()];
-    var _calday = [_info[0].substr(0, 1), _info[0].substr(1, 2), _info[0].substr(3, 1), _info[0].substr(4, 2), _info[1].substr(0, 1), _info[1].substr(1, 2), _info[1].substr(3, 1), _info[1].substr(4, 2), _info[2].substr(0, 1), _info[2].substr(1, 2), _info[2].substr(3, 1), _info[2].substr(4, 2), _info[3].substr(0, 1), _info[3].substr(1, 2), _info[3].substr(3, 1), _info[3].substr(4, 2), _info[4].substr(0, 1), _info[4].substr(1, 2), _info[4].substr(3, 1), _info[4].substr(4, 2), _info[5].substr(0, 1), _info[5].substr(1, 2), _info[5].substr(3, 1), _info[5].substr(4, 2)];
-    return parseInt(_calday[n - 1]);
-  },
-  /**
-      * 传入农历数字月份返回汉语通俗表示法
-      * @param lunar month
-      * @return Cn string
-      * @eg:var cnMonth = calendar.toChinaMonth(12) ;//cnMonth='腊月'
-      */
-  toChinaMonth: function toChinaMonth(m) {
-    // 月 => \u6708
-    if (m > 12 || m < 1) {
-      return -1;
-    } // 若参数错误 返回-1
-    var s = this.nStr3[m - 1];
-    s += "\u6708"; // 加上月字
-    return s;
-  },
-  /**
-      * 传入农历日期数字返回汉字表示法
-      * @param lunar day
-      * @return Cn string
-      * @eg:var cnDay = calendar.toChinaDay(21) ;//cnMonth='廿一'
-      */
-  toChinaDay: function toChinaDay(d) {
-    // 日 => \u65e5
-    var s;
-    switch (d) {
-      case 10:
-        s = "\u521D\u5341";
-        break;
-      case 20:
-        s = "\u4E8C\u5341";
-        break;
-        break;
-      case 30:
-        s = "\u4E09\u5341";
-        break;
-        break;
-      default:
-        s = this.nStr2[Math.floor(d / 10)];
-        s += this.nStr1[d % 10];
-    }
-    return s;
-  },
-  /**
-      * 年份转生肖[!仅能大致转换] => 精确划分生肖分界线是“立春”
-      * @param y year
-      * @return Cn string
-      * @eg:var animal = calendar.getAnimal(1987) ;//animal='兔'
-      */
-  getAnimal: function getAnimal(y) {
-    return this.Animals[(y - 4) % 12];
-  },
-  /**
-      * 传入阳历年月日获得详细的公历、农历object信息 <=>JSON
-      * @param y  solar year
-      * @param m  solar month
-      * @param d  solar day
-      * @return JSON object
-      * @eg:console.log(calendar.solar2lunar(1987,11,01));
-      */
-  solar2lunar: function solar2lunar(y, m, d) {
-    // 参数区间1900.1.31~2100.12.31
-    // 年份限定、上限
-    if (y < 1900 || y > 2100) {
-      return -1; // undefined转换为数字变为NaN
-    }
-    // 公历传参最下限
-    if (y == 1900 && m == 1 && d < 31) {
-      return -1;
-    }
-    // 未传参  获得当天
-    if (!y) {
-      var objDate = new Date();
-    } else {
-      var objDate = new Date(y, parseInt(m) - 1, d);
-    }
-    var i;
-    var leap = 0;
-    var temp = 0;
-    // 修正ymd参数
-    var y = objDate.getFullYear();
-    var m = objDate.getMonth() + 1;
-    var d = objDate.getDate();
-    var offset = (Date.UTC(objDate.getFullYear(), objDate.getMonth(), objDate.getDate()) - Date.UTC(1900, 0, 31)) / 86400000;
-    for (i = 1900; i < 2101 && offset > 0; i++) {
-      temp = this.lYearDays(i);
-      offset -= temp;
-    }
-    if (offset < 0) {
-      offset += temp;
-      i--;
-    }
-
-    // 是否今天
-    var isTodayObj = new Date();
-    var isToday = false;
-    if (isTodayObj.getFullYear() == y && isTodayObj.getMonth() + 1 == m && isTodayObj.getDate() == d) {
-      isToday = true;
-    }
-    // 星期几
-    var nWeek = objDate.getDay();
-    var cWeek = this.nStr1[nWeek];
-    // 数字表示周几顺应天朝周一开始的惯例
-    if (nWeek == 0) {
-      nWeek = 7;
-    }
-    // 农历年
-    var year = i;
-    var leap = this.leapMonth(i); // 闰哪个月
-    var isLeap = false;
-
-    // 效验闰月
-    for (i = 1; i < 13 && offset > 0; i++) {
-      // 闰月
-      if (leap > 0 && i == leap + 1 && isLeap == false) {
-        --i;
-        isLeap = true;
-        temp = this.leapDays(year); // 计算农历闰月天数
-      } else {
-        temp = this.monthDays(year, i); // 计算农历普通月天数
-      }
-      // 解除闰月
-      if (isLeap == true && i == leap + 1) {
-        isLeap = false;
-      }
-      offset -= temp;
-    }
-    // 闰月导致数组下标重叠取反
-    if (offset == 0 && leap > 0 && i == leap + 1) {
-      if (isLeap) {
-        isLeap = false;
-      } else {
-        isLeap = true;
-        --i;
-      }
-    }
-    if (offset < 0) {
-      offset += temp;
-      --i;
-    }
-    // 农历月
-    var month = i;
-    // 农历日
-    var day = offset + 1;
-    // 天干地支处理
-    var sm = m - 1;
-    var gzY = this.toGanZhiYear(year);
-
-    // 当月的两个节气
-    // bugfix-2017-7-24 11:03:38 use lunar Year Param `y` Not `year`
-    var firstNode = this.getTerm(y, m * 2 - 1); // 返回当月「节」为几日开始
-    var secondNode = this.getTerm(y, m * 2); // 返回当月「节」为几日开始
-
-    // 依据12节气修正干支月
-    var gzM = this.toGanZhi((y - 1900) * 12 + m + 11);
-    if (d >= firstNode) {
-      gzM = this.toGanZhi((y - 1900) * 12 + m + 12);
-    }
-
-    // 传入的日期的节气与否
-    var isTerm = false;
-    var Term = null;
-    if (firstNode == d) {
-      isTerm = true;
-      Term = this.solarTerm[m * 2 - 2];
-    }
-    if (secondNode == d) {
-      isTerm = true;
-      Term = this.solarTerm[m * 2 - 1];
-    }
-    // 日柱 当月一日与 1900/1/1 相差天数
-    var dayCyclical = Date.UTC(y, sm, 1, 0, 0, 0, 0) / 86400000 + 25567 + 10;
-    var gzD = this.toGanZhi(dayCyclical + d - 1);
-    // 该日期所属的星座
-    var astro = this.toAstro(m, d);
-    return {
-      'lYear': year,
-      'lMonth': month,
-      'lDay': day,
-      'Animal': this.getAnimal(year),
-      'IMonthCn': (isLeap ? "\u95F0" : '') + this.toChinaMonth(month),
-      'IDayCn': this.toChinaDay(day),
-      'cYear': y,
-      'cMonth': m,
-      'cDay': d,
-      'gzYear': gzY,
-      'gzMonth': gzM,
-      'gzDay': gzD,
-      'isToday': isToday,
-      'isLeap': isLeap,
-      'nWeek': nWeek,
-      'ncWeek': "\u661F\u671F" + cWeek,
-      'isTerm': isTerm,
-      'Term': Term,
-      'astro': astro
-    };
-  },
-  /**
-      * 传入农历年月日以及传入的月份是否闰月获得详细的公历、农历object信息 <=>JSON
-      * @param y  lunar year
-      * @param m  lunar month
-      * @param d  lunar day
-      * @param isLeapMonth  lunar month is leap or not.[如果是农历闰月第四个参数赋值true即可]
-      * @return JSON object
-      * @eg:console.log(calendar.lunar2solar(1987,9,10));
-      */
-  lunar2solar: function lunar2solar(y, m, d, isLeapMonth) {
-    // 参数区间1900.1.31~2100.12.1
-    var isLeapMonth = !!isLeapMonth;
-    var leapOffset = 0;
-    var leapMonth = this.leapMonth(y);
-    var leapDay = this.leapDays(y);
-    if (isLeapMonth && leapMonth != m) {
-      return -1;
-    } // 传参要求计算该闰月公历 但该年得出的闰月与传参的月份并不同
-    if (y == 2100 && m == 12 && d > 1 || y == 1900 && m == 1 && d < 31) {
-      return -1;
-    } // 超出了最大极限值
-    var day = this.monthDays(y, m);
-    var _day = day;
-    // bugFix 2016-9-25
-    // if month is leap, _day use leapDays method
-    if (isLeapMonth) {
-      _day = this.leapDays(y, m);
-    }
-    if (y < 1900 || y > 2100 || d > _day) {
-      return -1;
-    } // 参数合法性效验
-
-    // 计算农历的时间差
-    var offset = 0;
-    for (var i = 1900; i < y; i++) {
-      offset += this.lYearDays(i);
-    }
-    var leap = 0;
-    var isAdd = false;
-    for (var i = 1; i < m; i++) {
-      leap = this.leapMonth(y);
-      if (!isAdd) {
-        // 处理闰月
-        if (leap <= i && leap > 0) {
-          offset += this.leapDays(y);
-          isAdd = true;
-        }
-      }
-      offset += this.monthDays(y, i);
-    }
-    // 转换闰月农历 需补充该年闰月的前一个月的时差
-    if (isLeapMonth) {
-      offset += day;
-    }
-    // 1900年农历正月一日的公历时间为1900年1月30日0时0分0秒(该时间也是本农历的最开始起始点)
-    var stmap = Date.UTC(1900, 1, 30, 0, 0, 0);
-    var calObj = new Date((offset + d - 31) * 86400000 + stmap);
-    var cY = calObj.getUTCFullYear();
-    var cM = calObj.getUTCMonth() + 1;
-    var cD = calObj.getUTCDate();
-    return this.solar2lunar(cY, cM, cD);
-  }
-};
-var _default = calendar;
-exports.default = _default;
-
-/***/ }),
-/* 284 */,
-/* 285 */,
-/* 286 */,
-/* 287 */,
-/* 288 */,
-/* 289 */,
-/* 290 */,
-/* 291 */
+/* 262 */
 /*!***************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-tag/props.js ***!
   \***************************************************************************/
@@ -21764,14 +22067,458 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
-/* 292 */,
+/* 263 */,
+/* 264 */,
+/* 265 */,
+/* 266 */,
+/* 267 */,
+/* 268 */,
+/* 269 */,
+/* 270 */
+/*!***********************************************************************************!*\
+  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-radio-group/props.js ***!
+  \***********************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(uni) {
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _default = {
+  props: {
+    // 绑定的值
+    value: {
+      type: [String, Number, Boolean],
+      default: uni.$u.props.radioGroup.value
+    },
+    // 是否禁用全部radio
+    disabled: {
+      type: Boolean,
+      default: uni.$u.props.radioGroup.disabled
+    },
+    // 形状，circle-圆形，square-方形
+    shape: {
+      type: String,
+      default: uni.$u.props.radioGroup.shape
+    },
+    // 选中状态下的颜色，如设置此值，将会覆盖parent的activeColor值
+    activeColor: {
+      type: String,
+      default: uni.$u.props.radioGroup.activeColor
+    },
+    // 未选中的颜色
+    inactiveColor: {
+      type: String,
+      default: uni.$u.props.radioGroup.inactiveColor
+    },
+    // 标识符
+    name: {
+      type: String,
+      default: uni.$u.props.radioGroup.name
+    },
+    // 整个组件的尺寸，默认px
+    size: {
+      type: [String, Number],
+      default: uni.$u.props.radioGroup.size
+    },
+    // 布局方式，row-横向，column-纵向
+    placement: {
+      type: String,
+      default: uni.$u.props.radioGroup.placement
+    },
+    // label的文本
+    label: {
+      type: [String],
+      default: uni.$u.props.radioGroup.label
+    },
+    // label的颜色 （默认 '#303133' ）
+    labelColor: {
+      type: [String],
+      default: uni.$u.props.radioGroup.labelColor
+    },
+    // label的字体大小，px单位
+    labelSize: {
+      type: [String, Number],
+      default: uni.$u.props.radioGroup.labelSize
+    },
+    // 是否禁止点击文本操作checkbox(默认 false )
+    labelDisabled: {
+      type: Boolean,
+      default: uni.$u.props.radioGroup.labelDisabled
+    },
+    // 图标颜色
+    iconColor: {
+      type: String,
+      default: uni.$u.props.radioGroup.iconColor
+    },
+    // 图标的大小，单位px
+    iconSize: {
+      type: [String, Number],
+      default: uni.$u.props.radioGroup.iconSize
+    },
+    // 竖向配列时，是否显示下划线
+    borderBottom: {
+      type: Boolean,
+      default: uni.$u.props.radioGroup.borderBottom
+    },
+    // 图标与文字的对齐方式
+    iconPlacement: {
+      type: String,
+      default: uni.$u.props.radio.iconPlacement
+    }
+  }
+};
+exports.default = _default;
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
+
+/***/ }),
+/* 271 */,
+/* 272 */,
+/* 273 */,
+/* 274 */,
+/* 275 */,
+/* 276 */,
+/* 277 */,
+/* 278 */
+/*!*****************************************************************************!*\
+  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-radio/props.js ***!
+  \*****************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(uni) {
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _default = {
+  props: {
+    // radio的名称
+    name: {
+      type: [String, Number, Boolean],
+      default: uni.$u.props.radio.name
+    },
+    // 形状，square为方形，circle为圆型
+    shape: {
+      type: String,
+      default: uni.$u.props.radio.shape
+    },
+    // 是否禁用
+    disabled: {
+      type: [String, Boolean],
+      default: uni.$u.props.radio.disabled
+    },
+    // 是否禁止点击提示语选中单选框
+    labelDisabled: {
+      type: [String, Boolean],
+      default: uni.$u.props.radio.labelDisabled
+    },
+    // 选中状态下的颜色，如设置此值，将会覆盖parent的activeColor值
+    activeColor: {
+      type: String,
+      default: uni.$u.props.radio.activeColor
+    },
+    // 未选中的颜色
+    inactiveColor: {
+      type: String,
+      default: uni.$u.props.radio.inactiveColor
+    },
+    // 图标的大小，单位px
+    iconSize: {
+      type: [String, Number],
+      default: uni.$u.props.radio.iconSize
+    },
+    // label的字体大小，px单位
+    labelSize: {
+      type: [String, Number],
+      default: uni.$u.props.radio.labelSize
+    },
+    // label提示文字，因为nvue下，直接slot进来的文字，由于特殊的结构，无法修改样式
+    label: {
+      type: [String, Number],
+      default: uni.$u.props.radio.label
+    },
+    // 整体的大小
+    size: {
+      type: [String, Number],
+      default: uni.$u.props.radio.size
+    },
+    // 图标颜色
+    color: {
+      type: String,
+      default: uni.$u.props.radio.color
+    },
+    // label的颜色
+    labelColor: {
+      type: String,
+      default: uni.$u.props.radio.labelColor
+    }
+  }
+};
+exports.default = _default;
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
+
+/***/ }),
+/* 279 */,
+/* 280 */,
+/* 281 */,
+/* 282 */,
+/* 283 */,
+/* 284 */,
+/* 285 */,
+/* 286 */
+/*!********************************************************************************!*\
+  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-textarea/props.js ***!
+  \********************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(uni) {
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _default = {
+  props: {
+    // 输入框的内容
+    value: {
+      type: [String, Number],
+      default: uni.$u.props.textarea.value
+    },
+    // 输入框为空时占位符
+    placeholder: {
+      type: [String, Number],
+      default: uni.$u.props.textarea.placeholder
+    },
+    // 指定placeholder的样式类，注意页面或组件的style中写了scoped时，需要在类名前写/deep/
+    placeholderClass: {
+      type: String,
+      default: uni.$u.props.input.placeholderClass
+    },
+    // 指定placeholder的样式
+    placeholderStyle: {
+      type: [String, Object],
+      default: uni.$u.props.input.placeholderStyle
+    },
+    // 输入框高度
+    height: {
+      type: [String, Number],
+      default: uni.$u.props.textarea.height
+    },
+    // 设置键盘右下角按钮的文字，仅微信小程序，App-vue和H5有效
+    confirmType: {
+      type: String,
+      default: uni.$u.props.textarea.confirmType
+    },
+    // 是否禁用
+    disabled: {
+      type: Boolean,
+      default: uni.$u.props.textarea.disabled
+    },
+    // 是否显示统计字数
+    count: {
+      type: Boolean,
+      default: uni.$u.props.textarea.count
+    },
+    // 是否自动获取焦点，nvue不支持，H5取决于浏览器的实现
+    focus: {
+      type: Boolean,
+      default: uni.$u.props.textarea.focus
+    },
+    // 是否自动增加高度
+    autoHeight: {
+      type: Boolean,
+      default: uni.$u.props.textarea.autoHeight
+    },
+    // 如果textarea是在一个position:fixed的区域，需要显示指定属性fixed为true
+    fixed: {
+      type: Boolean,
+      default: uni.$u.props.textarea.fixed
+    },
+    // 指定光标与键盘的距离
+    cursorSpacing: {
+      type: Number,
+      default: uni.$u.props.textarea.cursorSpacing
+    },
+    // 指定focus时的光标位置
+    cursor: {
+      type: [String, Number],
+      default: uni.$u.props.textarea.cursor
+    },
+    // 是否显示键盘上方带有”完成“按钮那一栏，
+    showConfirmBar: {
+      type: Boolean,
+      default: uni.$u.props.textarea.showConfirmBar
+    },
+    // 光标起始位置，自动聚焦时有效，需与selection-end搭配使用
+    selectionStart: {
+      type: Number,
+      default: uni.$u.props.textarea.selectionStart
+    },
+    // 光标结束位置，自动聚焦时有效，需与selection-start搭配使用
+    selectionEnd: {
+      type: Number,
+      default: uni.$u.props.textarea.selectionEnd
+    },
+    // 键盘弹起时，是否自动上推页面
+    adjustPosition: {
+      type: Boolean,
+      default: uni.$u.props.textarea.adjustPosition
+    },
+    // 是否去掉 iOS 下的默认内边距，只微信小程序有效
+    disableDefaultPadding: {
+      type: Boolean,
+      default: uni.$u.props.textarea.disableDefaultPadding
+    },
+    // focus时，点击页面的时候不收起键盘，只微信小程序有效
+    holdKeyboard: {
+      type: Boolean,
+      default: uni.$u.props.textarea.holdKeyboard
+    },
+    // 最大输入长度，设置为 -1 的时候不限制最大长度
+    maxlength: {
+      type: [String, Number],
+      default: uni.$u.props.textarea.maxlength
+    },
+    // 边框类型，surround-四周边框，bottom-底部边框
+    border: {
+      type: String,
+      default: uni.$u.props.textarea.border
+    },
+    // 用于处理或者过滤输入框内容的方法
+    formatter: {
+      type: [Function, null],
+      default: uni.$u.props.textarea.formatter
+    },
+    // 是否忽略组件内对文本合成系统事件的处理
+    ignoreCompositionEvent: {
+      type: Boolean,
+      default: true
+    }
+  }
+};
+exports.default = _default;
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
+
+/***/ }),
+/* 287 */,
+/* 288 */,
+/* 289 */,
+/* 290 */,
+/* 291 */,
+/* 292 */
+/*!******************************************************************************!*\
+  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-picker/props.js ***!
+  \******************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(uni) {
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _default = {
+  props: {
+    // 是否展示picker弹窗
+    show: {
+      type: Boolean,
+      default: uni.$u.props.picker.show
+    },
+    // 是否展示顶部的操作栏
+    showToolbar: {
+      type: Boolean,
+      default: uni.$u.props.picker.showToolbar
+    },
+    // 顶部标题
+    title: {
+      type: String,
+      default: uni.$u.props.picker.title
+    },
+    // 对象数组，设置每一列的数据
+    columns: {
+      type: Array,
+      default: uni.$u.props.picker.columns
+    },
+    // 是否显示加载中状态
+    loading: {
+      type: Boolean,
+      default: uni.$u.props.picker.loading
+    },
+    // 各列中，单个选项的高度
+    itemHeight: {
+      type: [String, Number],
+      default: uni.$u.props.picker.itemHeight
+    },
+    // 取消按钮的文字
+    cancelText: {
+      type: String,
+      default: uni.$u.props.picker.cancelText
+    },
+    // 确认按钮的文字
+    confirmText: {
+      type: String,
+      default: uni.$u.props.picker.confirmText
+    },
+    // 取消按钮的颜色
+    cancelColor: {
+      type: String,
+      default: uni.$u.props.picker.cancelColor
+    },
+    // 确认按钮的颜色
+    confirmColor: {
+      type: String,
+      default: uni.$u.props.picker.confirmColor
+    },
+    // 每列中可见选项的数量
+    visibleItemCount: {
+      type: [String, Number],
+      default: uni.$u.props.picker.visibleItemCount
+    },
+    // 选项对象中，需要展示的属性键名
+    keyName: {
+      type: String,
+      default: uni.$u.props.picker.keyName
+    },
+    // 是否允许点击遮罩关闭选择器
+    closeOnClickOverlay: {
+      type: Boolean,
+      default: uni.$u.props.picker.closeOnClickOverlay
+    },
+    // 各列的默认索引
+    defaultIndex: {
+      type: Array,
+      default: uni.$u.props.picker.defaultIndex
+    },
+    // 是否在手指松开时立即触发 change 事件。若不开启则会在滚动动画结束后触发 change 事件，只在微信2.21.1及以上有效
+    immediateChange: {
+      type: Boolean,
+      default: uni.$u.props.picker.immediateChange
+    }
+  }
+};
+exports.default = _default;
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
+
+/***/ }),
 /* 293 */,
 /* 294 */,
 /* 295 */,
 /* 296 */,
 /* 297 */,
 /* 298 */,
-/* 299 */
+/* 299 */,
+/* 300 */
 /*!*****************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-popup/props.js ***!
   \*****************************************************************************/
@@ -21868,14 +22615,14 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
-/* 300 */,
 /* 301 */,
 /* 302 */,
 /* 303 */,
 /* 304 */,
 /* 305 */,
 /* 306 */,
-/* 307 */
+/* 307 */,
+/* 308 */
 /*!****************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-line/props.js ***!
   \****************************************************************************/
@@ -21926,14 +22673,14 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
-/* 308 */,
 /* 309 */,
 /* 310 */,
 /* 311 */,
 /* 312 */,
 /* 313 */,
 /* 314 */,
-/* 315 */
+/* 315 */,
+/* 316 */
 /*!************************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-loading-icon/props.js ***!
   \************************************************************************************/
@@ -22010,7 +22757,6 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
-/* 316 */,
 /* 317 */,
 /* 318 */,
 /* 319 */,
@@ -22018,86 +22764,7 @@ exports.default = _default;
 /* 321 */,
 /* 322 */,
 /* 323 */,
-/* 324 */,
-/* 325 */,
-/* 326 */,
-/* 327 */,
-/* 328 */,
-/* 329 */,
-/* 330 */
-/*!*******************************************************************************!*\
-  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-toolbar/props.js ***!
-  \*******************************************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-/* WEBPACK VAR INJECTION */(function(uni) {
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-var _default = {
-  props: {
-    // 是否展示工具条
-    show: {
-      type: Boolean,
-      default: uni.$u.props.toolbar.show
-    },
-    // 取消按钮的文字
-    cancelText: {
-      type: String,
-      default: uni.$u.props.toolbar.cancelText
-    },
-    // 确认按钮的文字
-    confirmText: {
-      type: String,
-      default: uni.$u.props.toolbar.confirmText
-    },
-    // 取消按钮的颜色
-    cancelColor: {
-      type: String,
-      default: uni.$u.props.toolbar.cancelColor
-    },
-    // 确认按钮的颜色
-    confirmColor: {
-      type: String,
-      default: uni.$u.props.toolbar.confirmColor
-    },
-    // 标题文字
-    title: {
-      type: String,
-      default: uni.$u.props.toolbar.title
-    }
-  }
-};
-exports.default = _default;
-/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
-
-/***/ }),
-/* 331 */,
-/* 332 */,
-/* 333 */,
-/* 334 */,
-/* 335 */,
-/* 336 */,
-/* 337 */,
-/* 338 */,
-/* 339 */,
-/* 340 */,
-/* 341 */,
-/* 342 */,
-/* 343 */,
-/* 344 */,
-/* 345 */,
-/* 346 */,
-/* 347 */,
-/* 348 */,
-/* 349 */,
-/* 350 */,
-/* 351 */,
-/* 352 */
+/* 324 */
 /*!**********************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-transition/props.js ***!
   \**********************************************************************************/
@@ -22139,7 +22806,7 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
-/* 353 */
+/* 325 */
 /*!***************************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-transition/transition.js ***!
   \***************************************************************************************/
@@ -22156,7 +22823,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.default = void 0;
 var _regenerator = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/regenerator */ 56));
 var _asyncToGenerator2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/asyncToGenerator */ 58));
-var _nvueAniMap = _interopRequireDefault(__webpack_require__(/*! ./nvue.ani-map.js */ 354));
+var _nvueAniMap = _interopRequireDefault(__webpack_require__(/*! ./nvue.ani-map.js */ 326));
 // 定义一个一定时间后自动成功的promise，让调用nextTick方法处，进入下一个then方法
 var nextTick = function nextTick() {
   return new Promise(function (resolve) {
@@ -22248,7 +22915,7 @@ var _default = {
 exports.default = _default;
 
 /***/ }),
-/* 354 */
+/* 326 */
 /*!*****************************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-transition/nvue.ani-map.js ***!
   \*****************************************************************************************/
@@ -22441,14 +23108,80 @@ var _default = {
 exports.default = _default;
 
 /***/ }),
-/* 355 */,
-/* 356 */,
-/* 357 */,
-/* 358 */,
-/* 359 */,
-/* 360 */,
-/* 361 */,
-/* 362 */
+/* 327 */,
+/* 328 */,
+/* 329 */,
+/* 330 */,
+/* 331 */,
+/* 332 */,
+/* 333 */,
+/* 334 */,
+/* 335 */,
+/* 336 */,
+/* 337 */,
+/* 338 */,
+/* 339 */,
+/* 340 */,
+/* 341 */
+/*!*******************************************************************************!*\
+  !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-toolbar/props.js ***!
+  \*******************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* WEBPACK VAR INJECTION */(function(uni) {
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+var _default = {
+  props: {
+    // 是否展示工具条
+    show: {
+      type: Boolean,
+      default: uni.$u.props.toolbar.show
+    },
+    // 取消按钮的文字
+    cancelText: {
+      type: String,
+      default: uni.$u.props.toolbar.cancelText
+    },
+    // 确认按钮的文字
+    confirmText: {
+      type: String,
+      default: uni.$u.props.toolbar.confirmText
+    },
+    // 取消按钮的颜色
+    cancelColor: {
+      type: String,
+      default: uni.$u.props.toolbar.cancelColor
+    },
+    // 确认按钮的颜色
+    confirmColor: {
+      type: String,
+      default: uni.$u.props.toolbar.confirmColor
+    },
+    // 标题文字
+    title: {
+      type: String,
+      default: uni.$u.props.toolbar.title
+    }
+  }
+};
+exports.default = _default;
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
+
+/***/ }),
+/* 342 */,
+/* 343 */,
+/* 344 */,
+/* 345 */,
+/* 346 */,
+/* 347 */,
+/* 348 */,
+/* 349 */
 /*!*******************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-overlay/props.js ***!
   \*******************************************************************************/
@@ -22490,14 +23223,14 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
-/* 363 */,
-/* 364 */,
-/* 365 */,
-/* 366 */,
-/* 367 */,
-/* 368 */,
-/* 369 */,
-/* 370 */
+/* 350 */,
+/* 351 */,
+/* 352 */,
+/* 353 */,
+/* 354 */,
+/* 355 */,
+/* 356 */,
+/* 357 */
 /*!**********************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-status-bar/props.js ***!
   \**********************************************************************************/
@@ -22523,14 +23256,14 @@ exports.default = _default;
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./node_modules/@dcloudio/uni-mp-weixin/dist/index.js */ 2)["default"]))
 
 /***/ }),
-/* 371 */,
-/* 372 */,
-/* 373 */,
-/* 374 */,
-/* 375 */,
-/* 376 */,
-/* 377 */,
-/* 378 */
+/* 358 */,
+/* 359 */,
+/* 360 */,
+/* 361 */,
+/* 362 */,
+/* 363 */,
+/* 364 */,
+/* 365 */
 /*!***********************************************************************************!*\
   !*** D:/GitHub/Scheduling/uni_modules/uview-ui/components/u-safe-bottom/props.js ***!
   \***********************************************************************************/

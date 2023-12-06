@@ -8,6 +8,28 @@
 		},
 		onHide: function() {
 			console.log('App Hide')
+		},
+		globalData:{
+			baseUrl:'http://36.134.163.172:9012/api/',
+			getStatusBarHeight(){
+				// 状态栏高度
+				let statusBarHeight = uni.getSystemInfoSync().statusBarHeight
+				
+				// #ifdef MP-WEIXIN
+				// 获取微信胶囊的位置信息 width,height,top,right,left,bottom
+				const custom = wx.getMenuButtonBoundingClientRect()
+				// console.log(custom)
+				
+				// 导航栏高度(标题栏高度) = 胶囊高度 + (顶部距离 - 状态栏高度) * 2
+				let navigationBarHeight = custom.height + (custom.top - statusBarHeight) * 2
+				// console.log("导航栏高度："+this.navigationBarHeight)
+				
+				// 总体高度 = 状态栏高度 + 导航栏高度
+				return  navigationBarHeight + statusBarHeight
+				
+				// #endif
+				return 0;
+			}
 		}
 	}
 </script>
@@ -97,7 +119,13 @@
 	.border-bottom {
 		border-bottom: 1px solid $borderColor;
 	}
-
+	
+	.relative{
+		position: relative;
+	}
+	.absolute{
+		position: absolute;
+	}
 	
 	.flot{
 		float: left;

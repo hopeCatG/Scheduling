@@ -79,13 +79,14 @@
 				navHeight: 0,
 				datesWithWeekdays: [],
 				dateArr: [],
-				show:false,
-				title:'2023'
+				show:false, 
+				title:'2023',
+				globalData:(getApp()).globalData
 			}
 		},
 		components:{paiban},
 		onLoad() {
-			this.getHeight();
+			this.navHeight = this.globalData.getStatusBarHeight();
 			this.datesWithWeekdays = this.getMonthDatesWithWeekdays();
 			this.dateArr = this.getCurrentDateArray();
 		},
@@ -144,24 +145,6 @@
 
 				return datesWithWeekdays;
 
-			},
-			getHeight() {
-				// 状态栏高度
-				this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight
-
-				// #ifdef MP-WEIXIN
-				// 获取微信胶囊的位置信息 width,height,top,right,left,bottom
-				const custom = wx.getMenuButtonBoundingClientRect()
-				// console.log(custom)
-
-				// 导航栏高度(标题栏高度) = 胶囊高度 + (顶部距离 - 状态栏高度) * 2
-				this.navigationBarHeight = custom.height + (custom.top - this.statusBarHeight) * 2
-				// console.log("导航栏高度："+this.navigationBarHeight)
-
-				// 总体高度 = 状态栏高度 + 导航栏高度
-				this.navHeight = this.navigationBarHeight + this.statusBarHeight
-
-				// #endif
 			},
 			getData() {
 				var result = 0;

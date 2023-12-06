@@ -4585,6 +4585,12 @@ scroll-view.cu-steps .cu-item {
 .border-bottom {
   border-bottom: 1px solid #F0F0F0;
 }
+.relative {
+  position: relative;
+}
+.absolute {
+  position: absolute;
+}
 .flot {
   float: left;
 }

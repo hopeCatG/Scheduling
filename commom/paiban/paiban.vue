@@ -9,7 +9,7 @@
 					<view class="border-bottom border-right padding-sm text-center">
 						麻醉科
 					</view>
-				</view>
+				</view> 
 				<view class="app-scroll-x">
 					<view class="flex align-center ">
 						<view class="border-bottom border-right  text-center padding-sm"
@@ -24,8 +24,8 @@
 							:key="dateTImeIndex"
 							@click="changeDay"
 							>
-							<view class="">
-								{{dateTImeIndex % 2 == 0 ? '我' : '小明' }}
+							<view class=""> 
+								{{dateTImeIndex % 2 == 0 ? '我' : '小明' }}  
 							</view>
 						</view>
 					</view>

@@ -11,7 +11,18 @@ const app = new Vue({
 app.$mount()
 // #endif
 import uView from '@/uni_modules/uview-ui'
+
+
+
 Vue.use(uView)
+
+
+import $http from '@/zhouWei-request/requestConfig';
+Vue.prototype.$http = $http;
+
+
+
+
 // #ifdef VUE3
 import { createSSRApp } from 'vue'
 export function createApp() {

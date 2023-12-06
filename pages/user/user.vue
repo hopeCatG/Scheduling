@@ -6,31 +6,40 @@
 			</view>
 			<view class="padding-sm bg-height"
 				:style="{ paddingTop: navHeight + 'px', position: 'fixed', zIndex: 9, width: '100%' }">
-				<view class="flex align-center">
-					<view class="cu-avatar lg round margin-left "
-						style="background-image:url(https://ossweb-img.qq.com/images/lol/web201310/skin/big25002.jpg);">
+				<view v-if="userInfo.nickname === ''"><button open-type="getPhoneNumber"
+						@getphonenumber="getPhoneNumber" style="position: unset;background: none; color: white;">
+						<view class="text-dftext-black text-bold texst-white">
+							立即登录
+						</view>
+					</button></view>
+				<view class="flex align-center" v-else>
+					<view class="cu-avatar lg round margin-left " :style="{
+							backgroundImage:`url(${userInfo.avatar})`
+						}">
 					</view>
 					<view class="margin-left-sm text-white">
-						<view class=" text-dftext-black text-bold">微信用户名</view>
-						<view class=" text-dftext-black text-sm margin-tb-xs">用户id:4</view>
-						<view class=" text-dftext-black text-sm ">134****6815</view>
+						<view class=" text-dftext-black text-bold">{{userInfo.nickname}}</view>
+						<view class=" text-dftext-black text-sm margin-tb-xs">用户ID:{{userInfo.id}}</view>
+						<view class=" text-dftext-black text-sm ">
+							{{userInfo.mobile.replace(/^(\d{3})\d+(\d{4})$/, '$1****$2')}}</view>
 					</view>
 				</view>
 				<!-- 基本信息 -->
 				<view class="grid-3 grid-sm text-center padding-sm text-white">
 					<view class="">
-						姓名：小明
+						姓名：{{userInfo.userInfo.name || ''}}
 					</view>
 					<view class="">
-						年龄：24
+						年龄：{{userInfo.userInfo.age || ''}}
 					</view>
 					<view class="">
-						职位：护士
+						职位：{{userInfo.userInfo.pos_name || ''}}
 					</view>
 				</view>
 				<!-- 操作列表 -->
 				<view class="bg-white  padding-sm  radius-20 shadow grid-4 grid-sm  margin-top-xl">
-					<view class="flex flex-direction align-center" @click="goWhere('/pages/applyUp/applyUp?type=-1')">
+					<view class="flex flex-direction align-center"
+						@click="goWhere('/pagesApply/pages/applyUp/applyUp?type=-1')">
 						<image src="../../static/list_faqi.png" class=" " style="width: 40px;height:40px;" mode="">
 						</image>
 						<span class=" margin-top-sm text-sm">发起调班</span>
@@ -91,10 +100,11 @@
 					<!-- 列表 -->
 					<view class="padding-sm">
 						<view class="flex justify-between padding-sm" style="border-top: 1px solid #EFEFEF;"
-							v-for='(listI,listIndex) in listArr' :key="listIndex">
+							v-for='(listI,listIndex) in listArr' :key="listIndex"
+							@click="goWhere('/pagesApply/pages/applyEdit/applyEdit?params=' + JSON.stringify(listI))">
 							<view class="">
 								<view class="text-black text-xl">
-									{{listI.type}}
+									{{listI.type == 1 ? '互调' : '公休'}}申请
 								</view>
 								<view class="text-sm" style="color: #999999;">
 									{{ listI.date }}
@@ -113,7 +123,13 @@
 					</view>
 				</view>
 			</view>
-			<u-calendar :show="show" :mode="mode" @confirm="confirm"></u-calendar>
+			<u-datetime-picker :show="show" v-model="mode" mode="date" :closeOnClickOverlay='true' @confirm='confirm'
+				@cancel="closeFun"></u-datetime-picker>
+				<u-modal :show="show"  title="请绑定人员信息" >
+							<view class="slot-content">
+								<rich-text :nodes="content"></rich-text>
+							</view>
+						</u-modal>
 		</view>
 	</view>
 </template>
@@ -122,6 +138,19 @@
 	export default {
 		data() {
 			return {
+				userInfo: {
+					nickname: '',
+					userInfo:{
+						pos_name:'',
+						age:'',
+						name:''
+					}
+				},
+				userData:{
+					name:'',
+					age:'',
+					position:''
+				},
 				statusBarHeight: 0, // 状态导航栏高度
 				navHeight: 0, // 总体高度
 				navigationBarHeight: 0, // 导航栏高度(标题栏高度)
@@ -131,60 +160,109 @@
 				tabIndex: 0,
 				listArr: [{
 					state: 0,
-					type: '互调申请',
+					type: 1,
 					date: '2023-12-12'
 				}, {
 					state: 1,
-					type: '互调申请',
+					type: 2,
 					date: '2023-12-12'
 				}, {
 					state: 2,
-					type: '互调申请',
+					type: 1,
 					date: '2023-12-12'
-				}, ]
+				}, ],
+				globalData:(getApp()).globalData
 			}
 		},
 		onLoad() {
-			// let that = this;
-			// uni.getSystemInfo({
-			// 	success: function(res) {
-			// 		// 状态栏高度
-			// 		that.statusBarHeight = res.statusBarHeight;
-			// 		console.log('状态栏高度：', that.statusBarHeight);
-			// 	}
-			// });
-			console.log("App Launch")
-
-			// 状态栏高度
-			this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight
-
-			// #ifdef MP-WEIXIN
-			// 获取微信胶囊的位置信息 width,height,top,right,left,bottom
-			const custom = wx.getMenuButtonBoundingClientRect()
-			// console.log(custom)
-
-			// 导航栏高度(标题栏高度) = 胶囊高度 + (顶部距离 - 状态栏高度) * 2
-			this.navigationBarHeight = custom.height + (custom.top - this.statusBarHeight) * 2
-			// console.log("导航栏高度："+this.navigationBarHeight)
-
-			// 总体高度 = 状态栏高度 + 导航栏高度
-			this.navHeight = this.navigationBarHeight + this.statusBarHeight
-
-			// #endif
-
-			console.log(this.navHeight)
-
+			this.userInfoInit();
+			this.navHeight = this.globalData.getStatusBarHeight();
+			this.$http.post('approval/index').then(res => {
+				console.log(res);
+			})	
 		},
 		methods: {
+			userInfoInit() {
+				let that = this; 
+				uni.getStorage({
+					key: 'userInfo',
+					success: function(res) {
+						that.userInfo = res.data;
+						console.log(that.userInfo);
+					}
+				}) 
+			},
+			getPhoneNumber(e) {
+				let that = this;
+				uni.login({
+					provider: 'weixin',
+					timeout: 3000,
+					success: res => {
+						if (res.code) {
+							that.code = res.code;
+							that.$http.post('login/wxLogin',{
+								code: that.code,
+								iv: e.detail.iv,
+								encryptedData: e.detail.encryptedData
+							}).then((res) => {
+								that.loginF(res.phoneNumber)
+							})
+						}
+					},
+					fail(err) {
+						console.log(err)
+					}
+				})
+			},
+			loginF(mobile) {
+				let that = this;
+				uni.login({
+					"provider": "weixin",
+					"onlyAuthorize": true, // 微信登录仅请求授权认证
+					success: function(event) {
+						const {
+							code
+						} = event
+						that.$http.post('login/mnpLogin',{
+							code: event.code,
+							mobile
+						}).then((res) => {
+							//获得token完成登录
+							uni.setStorageSync('token', res.token)
+							uni.setStorageSync('userInfo', res)
+							that.userInfoInit()
+							uni.showToast({
+								title: '登录成功', 
+								icon: "none"
+							});
+						})
+					},
+					fail: function(err) {
+						uni.showToast({
+							title: '登录授权失败', 
+							icon: "none"
+						});
+					}
+				})
+			},
+			formattedDate(value_datetime) {
+				const date = new Date(value_datetime);
+				const year = date.getFullYear();
+				const month = String(date.getMonth() + 1).padStart(2, '0');
+				const day = String(date.getDate()).padStart(2, '0');
+				return `${year}-${month}-${day}`;
+			},
 			confirm(e) {
-				this.date = e[0];
+				this.date = this.formattedDate(e.value);
 				this.show = false;
 			},
 			resetFun() {
 				this.date = '请选择时间！'
 			},
-		
-			goWhere(url){
+			closeFun() {
+				this.show = false;
+			},
+			goWhere(url) {
 				uni.navigateTo({
 					url,
 				})
